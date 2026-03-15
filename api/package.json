@@ -82,6 +82,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^uuid$": "<rootDir>/../test/uuid-shim.ts"
+    },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

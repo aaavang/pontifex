@@ -31,7 +31,11 @@ const Dashboard = () => {
   );
 
   if (isLoading) {
-    return <Text>Loading dashboard...</Text>;
+    return <Text data-testid="dashboard-loading">Loading dashboard...</Text>;
+  }
+
+  if (error) {
+    return <Text data-testid="dashboard-error">Failed to load dashboard</Text>;
   }
 
   return (

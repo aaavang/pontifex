@@ -1,14 +1,16 @@
 import {Injectable} from "@nestjs/common";
 import {ResourceNotFoundException} from "../../common/exceptions/resource-not-found.exception";
-import {PontifexApplicationFromGremlin} from "../application/entities/application.entity";
+import {GraphQueryService} from "../gremlin/graph-query.service";
 import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexGroupFromGremlin} from "../group/entities/group.entity";
 import {PontifexUser, PontifexUserBundle, PontifexUserFromGremlin} from "./entities/user.entity";
 
 @Injectable()
 export class UserService {
-    constructor(private readonly gremlinService: GremlinService) {
-    }
+    constructor(
+        private readonly gremlinService: GremlinService,
+        private readonly graphQueryService: GraphQueryService,
+    ) {}
 
     async get(id: string): Promise<PontifexUserBundle> {
         const {vertex, connections} = await this.gremlinService.getVertexAndChildren(id, id, 'user');
@@ -16,10 +18,10 @@ export class UserService {
         if (!vertex) {
             throw new ResourceNotFoundException("User")
         }
-        
+
         const bundle: PontifexUserBundle = {
             memberGroups: connections?.["member of"]?.group?.map(PontifexGroupFromGremlin) ?? [],
-            ownedApplications: connections?.["owns"]?.application?.map(PontifexApplicationFromGremlin) ?? [],
+            ownedApplications: await this.graphQueryService.getApplicationsForUser(id),
             ownerGroups: connections?.["owns"]?.group?.map(PontifexGroupFromGremlin) ?? [],
             pendingPermissionRequests: [], // TODO: refactor this to use PermissionRequestService
             groupedPendingPermissionRequests: {}, // TODO: refactor this to use PermissionRequestService

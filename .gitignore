@@ -9,6 +9,11 @@ node_modules/
 api/dist/
 
 # UI
+ui/.env.test
+ui/e2e/.auth/
+e2e/.auth/
+ui/playwright-report/
+ui/test-results/
 ui/.next/
 ui/out/
 ui/build/

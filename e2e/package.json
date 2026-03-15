@@ -1,0 +1,13 @@
+{
+  "name": "pontifex-e2e-integration",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "dotenv": "^16.4.7",
+    "otpauth": "^9.3.6"
+  }
+}

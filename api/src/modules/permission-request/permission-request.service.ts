@@ -470,109 +470,118 @@ export class PermissionRequestService {
     async delete(id: string): Promise<void> {
         const bundle: PontifexPermissionRequestBundle = await this.get(id);
         const requestingEnv = bundle.sourceEnvironment;
-        const requestingApp = await this.pontifexService.Instance.application.get(requestingEnv.id);
 
-        let targetEnvironment: string;
-        if (bundle.targetRole) {
-            const endpointBundle = await this.roleService.get(
-                bundle.targetRole.id
-            );
-            targetEnvironment = endpointBundle.environment.id;
-        } else if (bundle.targetScope) {
-            const scopeBundle = await this.scopeService.get(
-                bundle.targetScope.id
-            );
-            targetEnvironment = scopeBundle.environment.id;
-        }
+        // Attempt AAD cleanup — tolerate 404s since the AAD app may already be deleted
+        try {
+            const requestingApp = await this.pontifexService.Instance.application.get(requestingEnv.id);
 
-        console.log(`looking up resourceAppId for ${targetEnvironment!}`);
-        const resourceApp = await this.pontifexService.Instance.application.get(targetEnvironment!);
-
-        console.log(
-            `looking up resourceServicePrincipal for ${resourceApp.appId}`
-        );
-        const resourceServicePrincipal =
-            await this.pontifexService.Instance.servicePrincipal.getByAppId(resourceApp.appId!);
-
-        if (bundle.permissionRequest.status === "APPROVED") {
-            if (
-                bundle.permissionRequest.roleAssignmentId &&
-                bundle.permissionRequest.roleAssignmentId !== ""
-            ) {
-                console.log(
-                    `revoking permission for environment ${resourceServicePrincipal.id} and roleAssignment ${bundle.permissionRequest.roleAssignmentId}`
+            let targetEnvironment: string;
+            if (bundle.targetRole) {
+                const endpointBundle = await this.roleService.get(
+                    bundle.targetRole.id
                 );
-                await this.pontifexService.Instance.servicePrincipal.revokePermission(
-                    resourceServicePrincipal.id!,
-                    bundle.permissionRequest.roleAssignmentId
+                targetEnvironment = endpointBundle.environment.id;
+            } else if (bundle.targetScope) {
+                const scopeBundle = await this.scopeService.get(
+                    bundle.targetScope.id
                 );
-                bundle.permissionRequest.roleAssignmentId = undefined;
-            } else if (
-                bundle.permissionRequest.scopeAssignmentId &&
-                bundle.permissionRequest.scopeAssignmentId !== ""
-            ) {
-                const clientApp = await this.pontifexService.Instance.application.get(
-                    bundle.sourceEnvironment.id
-                );
-                const clientServicePrincipal =
-                    await this.pontifexService.Instance.servicePrincipal.getByAppId(clientApp.appId!);
-
-                console.log(
-                    `revoking permission for environment ${resourceServicePrincipal.id} and delegated permission ${bundle.permissionRequest.scopeAssignmentId}`
-                );
-                await this.pontifexService.Instance.oauth2.revokePermission(
-                    clientServicePrincipal.id!,
-                    resourceServicePrincipal.id!,
-                    bundle.targetScope!.name
-                );
-                bundle.permissionRequest.scopeAssignmentId = undefined;
+                targetEnvironment = scopeBundle.environment.id;
             }
-        }
 
-        const requiredResourceAccess = requestingApp.requiredResourceAccess!.find(
-            (rra) => rra.resourceAppId === targetEnvironment
-        );
-
-        if (requiredResourceAccess) {
-            const requiredResourceAccessId =
-                bundle.targetRole?.id ?? bundle.targetScope?.id;
+            console.log(`looking up resourceAppId for ${targetEnvironment!}`);
+            const resourceApp = await this.pontifexService.Instance.application.get(targetEnvironment!);
 
             console.log(
-                `removing required resource access for ${requestingEnv.id} and ${requiredResourceAccessId}`
+                `looking up resourceServicePrincipal for ${resourceApp.appId}`
             );
-            const newResourceAccess = requiredResourceAccess.resourceAccess!.filter(
-                (ra) => ra.id !== requiredResourceAccessId
-            );
-            console.log(
-                `new resource access for ${requestingEnv.id} and ${requiredResourceAccessId}`,
-                newResourceAccess
-            );
-            requiredResourceAccess.resourceAccess = newResourceAccess;
-        }
+            const resourceServicePrincipal =
+                await this.pontifexService.Instance.servicePrincipal.getByAppId(resourceApp.appId!);
 
-        console.log(`removing required resource access for ${requestingEnv.id}`);
-        const filteredRequiredResourceAccess =
-            requestingApp.requiredResourceAccess!.filter(
-                (rra) => rra.resourceAccess!.length > 0
+            if (bundle.permissionRequest.status === "APPROVED") {
+                if (
+                    bundle.permissionRequest.roleAssignmentId &&
+                    bundle.permissionRequest.roleAssignmentId !== ""
+                ) {
+                    console.log(
+                        `revoking permission for environment ${resourceServicePrincipal.id} and roleAssignment ${bundle.permissionRequest.roleAssignmentId}`
+                    );
+                    await this.pontifexService.Instance.servicePrincipal.revokePermission(
+                        resourceServicePrincipal.id!,
+                        bundle.permissionRequest.roleAssignmentId
+                    );
+                    bundle.permissionRequest.roleAssignmentId = undefined;
+                } else if (
+                    bundle.permissionRequest.scopeAssignmentId &&
+                    bundle.permissionRequest.scopeAssignmentId !== ""
+                ) {
+                    const clientApp = await this.pontifexService.Instance.application.get(
+                        bundle.sourceEnvironment.id
+                    );
+                    const clientServicePrincipal =
+                        await this.pontifexService.Instance.servicePrincipal.getByAppId(clientApp.appId!);
+
+                    console.log(
+                        `revoking permission for environment ${resourceServicePrincipal.id} and delegated permission ${bundle.permissionRequest.scopeAssignmentId}`
+                    );
+                    await this.pontifexService.Instance.oauth2.revokePermission(
+                        clientServicePrincipal.id!,
+                        resourceServicePrincipal.id!,
+                        bundle.targetScope!.name
+                    );
+                    bundle.permissionRequest.scopeAssignmentId = undefined;
+                }
+            }
+
+            const requiredResourceAccess = requestingApp.requiredResourceAccess!.find(
+                (rra) => rra.resourceAppId === targetEnvironment
             );
 
-        // did we filter out any requiredResourceAccess?
-        if (
-            filteredRequiredResourceAccess.length !==
-            requestingApp.requiredResourceAccess!.length
-        ) {
+            if (requiredResourceAccess) {
+                const requiredResourceAccessId =
+                    bundle.targetRole?.id ?? bundle.targetScope?.id;
+
+                console.log(
+                    `removing required resource access for ${requestingEnv.id} and ${requiredResourceAccessId}`
+                );
+                const newResourceAccess = requiredResourceAccess.resourceAccess!.filter(
+                    (ra) => ra.id !== requiredResourceAccessId
+                );
+                console.log(
+                    `new resource access for ${requestingEnv.id} and ${requiredResourceAccessId}`,
+                    newResourceAccess
+                );
+                requiredResourceAccess.resourceAccess = newResourceAccess;
+            }
+
+            console.log(`removing required resource access for ${requestingEnv.id}`);
+            const filteredRequiredResourceAccess =
+                requestingApp.requiredResourceAccess!.filter(
+                    (rra) => rra.resourceAccess!.length > 0
+                );
+
+            if (
+                filteredRequiredResourceAccess.length !==
+                requestingApp.requiredResourceAccess!.length
+            ) {
+                console.log(
+                    `new required resource access for ${requestingEnv.id}`,
+                    filteredRequiredResourceAccess
+                );
+            }
             console.log(
-                `new required resource access for ${requestingEnv.id}`,
+                `updating required resource access for ${requestingEnv.id}`,
                 filteredRequiredResourceAccess
             );
+            await this.pontifexService.Instance.application.update(requestingEnv.id, {
+                requiredResourceAccess: filteredRequiredResourceAccess,
+            });
+        } catch (error) {
+            if (error?.statusCode === 404) {
+                console.log(`AAD resources for permission request ${id} already cleaned up, skipping AAD cleanup`)
+            } else {
+                throw error
+            }
         }
-        console.log(
-            `updating required resource access for ${requestingEnv.id}`,
-            filteredRequiredResourceAccess
-        );
-        await this.pontifexService.Instance.application.update(requestingEnv.id, {
-            requiredResourceAccess: filteredRequiredResourceAccess,
-        });
 
         await this.gremlinService.dropVertex(id, 'permissionRequest');
     }

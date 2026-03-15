@@ -16,6 +16,8 @@ export interface Connections {
     "member of"?: Resource; // user -> group
     "has token group"?: Resource; // environment -> token group
     "is user token group for"?: Resource; // token group -> environment
+    "has setting"?: Resource; // system-settings base -> system setting
+    "is setting for"?: Resource; // system setting -> system-settings base
 }
 
 export interface Resource {
@@ -29,6 +31,7 @@ export interface Resource {
     password?: GremlinVertex[];
     group?: GremlinVertex[];
     tokenGroup?: GremlinVertex[];
+    systemSetting?: GremlinVertex[];
 }
 
 export type ResourceType = keyof Resource;

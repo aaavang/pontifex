@@ -4,6 +4,7 @@ import {ResourceNotFoundException} from "../../common/exceptions/resource-not-fo
 import {PontifexAuditEvent, PontifexAuditEventFromGremlin} from "../audit-event/entities/audit-event.entity";
 import {PontifexEnvironmentFromGremlin} from "../environment/entities/environment.entity";
 import {EnvironmentService} from "../environment/environment.service";
+import {GraphQueryService} from "../gremlin/graph-query.service";
 import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexGroupFromGremlin} from "../group/entities/group.entity";
 import {PasswordService} from "../password/password.service";
@@ -19,6 +20,7 @@ import {
 @Injectable()
 export class ApplicationService {
     constructor(private readonly gremlinService: GremlinService,
+                private readonly graphQueryService: GraphQueryService,
                 private readonly environmentService: EnvironmentService,
                 private readonly pontifexService: PontifexAadService,
                 private readonly permissionRequestService: PermissionRequestService,
@@ -47,14 +49,23 @@ export class ApplicationService {
         for (const env of app.environments) {
             const environment = await this.environmentService.get(env.id)
 
-            const adEnvironment = await this.pontifexService.Instance.application.get(env.id)
+            // Clean up AAD resources — tolerate 404s since the AAD app may already be gone
+            try {
+                await this.pontifexService.Instance.application.get(env.id)
 
-            // wipe out required resource access (outbound prs)
-            console.log('updating required resource access to empty', env.id)
-            await this.pontifexService.Instance.application.update(env.id, {
-                requiredResourceAccess: []
-            })
-            console.log('required resource access updated to empty', env.id)
+                // wipe out required resource access (outbound prs)
+                console.log('updating required resource access to empty', env.id)
+                await this.pontifexService.Instance.application.update(env.id, {
+                    requiredResourceAccess: []
+                })
+                console.log('required resource access updated to empty', env.id)
+            } catch (error) {
+                if (error?.statusCode === 404) {
+                    console.log(`AAD application ${env.id} already deleted, skipping AAD cleanup`)
+                } else {
+                    throw error
+                }
+            }
 
             // delete each prs
             console.log('deleting outbound permission requests', env.id)
@@ -84,8 +95,16 @@ export class ApplicationService {
             console.log('passwords deleted', env.id)
 
             console.log('deleting aad application (environment)', env.id)
-            await this.pontifexService.Instance.application.delete(env.id)
-            console.log('aad application (environment) deleted', env.id)
+            try {
+                await this.pontifexService.Instance.application.delete(env.id)
+                console.log('aad application (environment) deleted', env.id)
+            } catch (error) {
+                if (error?.statusCode === 404) {
+                    console.log(`AAD application ${env.id} already deleted, skipping`)
+                } else {
+                    throw error
+                }
+            }
 
             console.log('deleting environment', env.id)
             await this.environmentService.delete(env.id)
@@ -119,16 +138,8 @@ export class ApplicationService {
         };
     }
 
-    async getAllByUser(userId: string): Promise<any[]> {
-        if (!userId) {
-            throw new Error('userId cannot be empty or undefined');
-        }
-
-        const query = 'g.V(vid).union(fold().unfold(), out("owns").has("type", "group"), out("member of")).out("owns").has("type", "application").dedup()';
-        const bindings = {vid: userId};
-
-        const result = await this.gremlinService.submit(query, bindings);
-        return result._items.map(PontifexApplicationFromGremlin);
+    async getAllByUser(userId: string): Promise<PontifexApplication[]> {
+        return this.graphQueryService.getApplicationsForUser(userId);
     }
 
     async getAll(): Promise<any[]> {

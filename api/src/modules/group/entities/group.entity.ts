@@ -1,3 +1,4 @@
+import {vertexToObject} from "../../../common/utils/vertex";
 import {PontifexUser} from "../../user/entities/user.entity";
 import {PontifexApplication} from "../../application/entities/application.entity";
 
@@ -15,9 +16,10 @@ export interface PontifexGroupBundle {
 }
 
 export function PontifexGroupFromGremlin(vertex: any): PontifexGroup {
+    const obj = vertexToObject(vertex)
     return {
-        id: vertex["id"],
-        name: vertex["properties"]["name"][0]["value"],
-        normalizedName: vertex["properties"]["normalizedName"][0]["value"]
+        id: obj["id"],
+        name: obj["name"],
+        normalizedName: obj["normalizedName"]
     }
 }

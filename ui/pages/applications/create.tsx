@@ -99,6 +99,7 @@ const CreateApplication = () => {
               <Input
                 type="text"
                 name="name"
+                data-testid="app-name-input"
                 className="form-control"
                 placeholder="My Super Awesome Application"
                 value={formik.values.name}
@@ -113,6 +114,7 @@ const CreateApplication = () => {
             </FormLabel>
             <Textarea
               name="description"
+              data-testid="app-description-input"
               className="form-control"
               placeholder="My Super Awesome Application's description"
               value={formik.values.description}
@@ -144,10 +146,12 @@ const CreateApplication = () => {
                         id={env}
                         type="checkbox"
                         name={env}
+                        data-testid={`env-checkbox-${env}`}
                         checked={formik.values.environments.includes(env)}
                         onChange={handleChange}
-                      />
-                      <FormLabel htmlFor={env}>{env}</FormLabel>
+                      >
+                        {env}
+                      </Checkbox>
                     </div>
                   ))}
                 </Stack>

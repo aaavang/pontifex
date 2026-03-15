@@ -7,6 +7,7 @@ import {
 import {
     Application,
     AppRoleAssignment,
+    DirectoryObject,
     Group,
     OAuth2PermissionGrant,
     PasswordCredential,
@@ -126,8 +127,20 @@ export class PontifexAAD {
         create: async (app: Application): Promise<Application> => {
             return await this.aad.api(APPLICATIONS_API_PATH).post(app)
         },
-        get: async (appObjectId: string): Promise<Application> => {
-            return await this.aad.api(`${APPLICATIONS_API_PATH}/${appObjectId}`).get()
+        get: async (appObjectId: string, retries = 3, intervalMs = 2000): Promise<Application> => {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    return await this.aad.api(`${APPLICATIONS_API_PATH}/${appObjectId}`).get()
+                } catch (error) {
+                    if (error?.statusCode === 404 && attempt < retries) {
+                        console.log(`AAD application ${appObjectId} not found (attempt ${attempt}/${retries}), retrying in ${intervalMs}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, intervalMs));
+                        continue;
+                    }
+                    throw error;
+                }
+            }
+            throw new Error(`AAD application ${appObjectId} not found after ${retries} attempts`);
         },
         update: async (appObjectId: string, app: Application) => {
             await this.aad.api(`${APPLICATIONS_API_PATH}/${appObjectId}`).patch(app)
@@ -144,6 +157,20 @@ export class PontifexAAD {
         },
         removePassword: async (appObjectId: string, request: RemovePasswordRequest) => {
             return await this.aad.api(`${APPLICATIONS_API_PATH}/${appObjectId}/removePassword`).post(request)
+        },
+        getByAppId: async (appId: string): Promise<Application | undefined> => {
+            if (!validate(appId)) {
+                throw new Error("Invalid appId")
+            }
+
+            type ApplicationQuery = {
+                "@odata.context": string,
+                value: Application[]
+            }
+            const {value}: ApplicationQuery = await this.aad.api(
+                `${APPLICATIONS_API_PATH}?$filter=appId eq '${appId}'`).get()
+
+            return value[0]
         }
     }
     servicePrincipal = {
@@ -186,6 +213,21 @@ export class PontifexAAD {
         }
     }
     group = {
+        create: async (displayName: string, description?: string): Promise<Group> => {
+            return await this.aad.api(GROUPS_API_PATH).post({
+                displayName,
+                description,
+                mailEnabled: false,
+                mailNickname: displayName.replace(/[^a-zA-Z0-9]/g, '_'),
+                securityEnabled: true,
+            })
+        },
+        getByDisplayName: async (displayName: string): Promise<Group | undefined> => {
+            const resp = await this.aad.api(GROUPS_API_PATH)
+                .filter(`displayName eq '${displayName}'`)
+                .get();
+            return resp.value[0]
+        },
         addAppRoleAssignment: async (principalId: string, resourceId: string, appRoleId: string) => {
             return await this.aad.api(`${GROUPS_API_PATH}/${principalId}/appRoleAssignments`).post({
                                                                                                        principalId,
@@ -199,6 +241,14 @@ export class PontifexAAD {
         },
         searchByPrefix: async (prefix: string): Promise<Group[]> => {
             const resp = await this.aad.api(`${GROUPS_API_PATH}`).filter(`startswith(displayName, '${prefix}')`).get();
+            return resp.value
+        },
+        getMembers: async (groupId: string): Promise<DirectoryObject[]> => {
+            const resp = await this.aad.api(`${GROUPS_API_PATH}/${groupId}/members`).get();
+            return resp.value
+        },
+        getOwners: async (groupId: string): Promise<DirectoryObject[]> => {
+            const resp = await this.aad.api(`${GROUPS_API_PATH}/${groupId}/owners`).get();
             return resp.value
         }
     }

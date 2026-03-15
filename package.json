@@ -1,0 +1,16 @@
+{
+  "name": "pontifex",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:api:unit",
+    "test:api:unit": "npm --prefix api test -- --no-coverage --testPathIgnorePatterns='integration'",
+    "test:api:integration": "npm --prefix api test -- --config jest.integration.config.ts --no-coverage",
+    "test:api:e2e": "npm --prefix api run test:e2e",
+    "test:api": "npm run test:api:unit && npm run test:api:integration",
+    "test:ui:e2e": "npm --prefix ui run test:e2e",
+    "test:e2e:integration": "npx playwright test --config e2e/playwright.config.ts",
+    "test:all": "npm run test:api && npm run test:api:e2e && npm run test:ui:e2e",
+    "lint": "npm --prefix api run lint",
+    "build": "npm --prefix api run build"
+  }
+}

@@ -1,3 +1,4 @@
+import {vertexToObject} from "../../../common/utils/vertex";
 import {PontifexEnvironment} from "../../environment/entities/environment.entity";
 
 export interface PontifexTokenGroup {
@@ -17,14 +18,15 @@ export interface PontifexTokenGroupBundle {
 }
 
 export function PontifexTokenGroupFromGremlin(vertex: any): PontifexTokenGroup {
+    const obj = vertexToObject(vertex)
     return {
-        id: vertex["id"],
-        name: vertex["properties"]["name"][0]["value"],
-        envId: vertex["properties"]["envId"][0]["value"],
-        appRoleId: vertex["properties"]["appRoleId"][0]["value"],
-        claimValue: vertex["properties"]["claimValue"]?.[0]["value"] ?? "",
-        appRoleAssignmentId: vertex["properties"]["appRoleAssignmentId"][0]["value"],
-        groupId: vertex["properties"]["groupId"][0]["value"],
-        description: vertex["properties"]["description"]?.[0]["value"] ?? ""
+        id: obj["id"],
+        name: obj["name"],
+        envId: obj["envId"],
+        appRoleId: obj["appRoleId"] ?? "",
+        appRoleAssignmentId: obj["appRoleAssignmentId"] ?? "",
+        groupId: obj["groupId"],
+        claimValue: obj["claimValue"] ?? "",
+        description: obj["description"] ?? ""
     }
 }

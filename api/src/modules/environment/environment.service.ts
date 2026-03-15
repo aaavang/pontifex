@@ -1,6 +1,7 @@
 import {AppRole, PermissionScope} from "@microsoft/microsoft-graph-types";
 import {forwardRef, Inject, Injectable} from "@nestjs/common";
 import {v4 as uuid} from "uuid"
+import {delay} from "../../common/utils/delay";
 import {omit} from "../../common/utils/obj";
 import {ApplicationUpdateRolesRequest} from "../application/dtos/application-update-roles-request.dto";
 import {PontifexApplicationFromGremlin} from "../application/entities/application.entity";
@@ -254,6 +255,23 @@ export class EnvironmentService {
         return envIdToScopes;
     }
 
+    private async updateAppRolesWithRetry(id: string, appRoles: AppRole[], maxAttempts = 10, intervalMs = 3000) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await this.pontifexAadService.Instance.application.update(id, {appRoles});
+            } catch (error) {
+                const isNotPropagated = error?.code === 'CannotDeleteOrUpdateEnabledEntitlement'
+                    || error?.body?.includes?.('CannotDeleteOrUpdateEnabledEntitlement');
+                if (isNotPropagated && attempt < maxAttempts) {
+                    console.log(`AAD role update not yet propagated (attempt ${attempt}/${maxAttempts}), retrying in ${intervalMs}ms...`);
+                    await delay(intervalMs);
+                    continue;
+                }
+                throw error;
+            }
+        }
+    }
+
     async removeRoles(id: string, existingAppRoles: SensitiveAppRole[], rolesToRemove: AppRole[]) {
         const appRoles: AppRole[] = []
 
@@ -278,15 +296,11 @@ export class EnvironmentService {
         })
 
         // first disable the roles to remove
-        await this.pontifexAadService.Instance.application.update(id, {
-            appRoles
-        })
+        await this.updateAppRolesWithRetry(id, appRoles)
 
         // then remove them from AAD
         const filteredRoles = appRoles.filter(role => !rolesToRemove.some(r => r.value === role.value));
-        await this.pontifexAadService.Instance.application.update(id, {
-            appRoles: filteredRoles
-        })
+        await this.updateAppRolesWithRetry(id, filteredRoles)
 
         // then remove them from cosmosdb
         rolesToRemove.forEach(role => this.roleService.delete(role.id!))
@@ -370,13 +384,18 @@ export class EnvironmentService {
         console.log(`Updating app roles to be: ${updatedAppRoles.map(role => role.displayName).join(',')}`)
 
         if (rolesToAdd.length > 0) {
-            const resp = await this.pontifexAadService.Instance.application.update(id, {
-                appRoles: updatedAppRoles.map(role => ({
-                    ...omit(role, "sensitive"),
-                    // the underlying graph api requires a description, but we don't show that to the user
-                    description: role.description ? role.description : `role to call ${role.displayName}`,
-                }))
+            const mappedRoles = updatedAppRoles.map(role => {
+                const isNew = rolesToAdd.includes(role)
+                if (isNew) {
+                    return {
+                        ...omit(role, "sensitive"),
+                        description: role.description ? role.description : `role to call ${role.displayName}`,
+                    }
+                }
+                // Existing roles must be sent unchanged to avoid CannotDeleteOrUpdateEnabledEntitlement
+                return omit(role, "sensitive")
             })
+            await this.updateAppRolesWithRetry(id, mappedRoles as AppRole[])
             await this.syncRoles(id, rolesToAdd)
         }
 

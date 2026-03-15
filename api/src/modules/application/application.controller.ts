@@ -1,4 +1,4 @@
-import {Application, PermissionScope, RequiredResourceAccess} from "@microsoft/microsoft-graph-types";
+import {Application, PermissionScope, RequiredResourceAccess, ServicePrincipal} from "@microsoft/microsoft-graph-types";
 import {
     Body,
     Controller,
@@ -44,6 +44,24 @@ export class ApplicationController {
                 private readonly roleService: RoleService,
                 private readonly scopeService: ScopeService,
                 private readonly pontifexAadService: PontifexAadService) {
+    }
+
+    private async createServicePrincipalWithRetry(appId: string, maxAttempts = 10, intervalMs = 2000): Promise<ServicePrincipal> {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await this.pontifexAadService.Instance.servicePrincipal.create(appId);
+            } catch (error) {
+                const isNotPropagated = error?.body?.includes?.('NoBackingApplicationObject')
+                    || error?.message?.includes?.('does not reference a valid application object');
+                if (isNotPropagated && attempt < maxAttempts) {
+                    console.log(`AAD app not yet propagated for SP creation (attempt ${attempt}/${maxAttempts}), retrying in ${intervalMs}ms...`);
+                    await delay(intervalMs);
+                    continue;
+                }
+                throw error;
+            }
+        }
+        throw new Error(`Failed to create service principal for ${appId} after ${maxAttempts} attempts`);
     }
 
     @Get()
@@ -130,12 +148,8 @@ export class ApplicationController {
             console.log("Creating AAD application:", newApp.displayName);
             const application = await this.pontifexAadService.Instance.application.create(newApp)
 
-            // TODO: Add flag to indicate whether we are in a free-tier or production tier.  We don't need this in prod
-            console.log("Waiting 6s for AAD application propagation...");
-            await delay(6000); // wait for propagation
-
             console.log("Creating service principal for application:", application.appId);
-            const principal = await this.pontifexAadService.Instance.servicePrincipal.create(application.appId!)
+            const principal = await this.createServicePrincipalWithRetry(application.appId!)
 
             // TODO: Figure out how to properly grant User.Read
             // console.log("Granting User.Read permission to service principal:", principal.id);
@@ -205,9 +219,7 @@ export class ApplicationController {
                                                                                               requiredResourceAccess: [userReadRequiredResourceAccess],
                                                                                           });
 
-            const principal = await this.pontifexAadService.Instance.servicePrincipal.create(
-                application.appId!
-            );
+            const principal = await this.createServicePrincipalWithRetry(application.appId!);
             await this.pontifexAadService.Instance.oauth2.grantPermission(
                 principal.id!,
                 "cb8c853a-b547-4797-9529-07971ecab8a9",
@@ -342,10 +354,9 @@ export class ApplicationController {
                                  @Body() body: ApplicationUpdateRolesRequest) {
         const pontifexApp = await this.applicationService.get(applicationId)
 
+        // First pass: validate that no roles with approved permission requests are being removed
         for (const env of pontifexApp.environments ?? []) {
-            console.log('Updating roles for environment:', env.name);
             const environmentAppRegistration = await this.pontifexAadService.Instance.application.get(env.id)
-            console.log('Environment App Registration:', environmentAppRegistration.appId);
             const newAppRoles: SensitiveAppRole[] = body.roles.map(role => ({
                 allowedMemberTypes: ["Application"],
                 description: role.description ?? "",
@@ -355,40 +366,24 @@ export class ApplicationController {
                 sensitive: role.sensitive ?? false
             }))
 
-            console.log('New App Roles:', newAppRoles);
-
             const existingAppRoles = environmentAppRegistration.appRoles as SensitiveAppRole[] ?? []
-
-            console.log('Existing App Roles:', existingAppRoles);
-
-            for (const role of existingAppRoles) {
-                if (role.allowedMemberTypes![0] === "User") {
-                    continue
-                }
-
-                const bundle = await this.roleService.get(role.id!)
-                role.sensitive = bundle.role?.sensitive ?? false
-            }
 
             const rolesToRemove = existingAppRoles.filter(
                 role => role.allowedMemberTypes![0] !== "User" && !newAppRoles.some(
                     r => r.displayName === role.displayName))
 
-            console.log('Roles to Remove:', rolesToRemove.map(r => r.displayName));
-
             for (const role of rolesToRemove) {
-                console.log('Removing role:', role.displayName);
                 const prs = await this.roleService.getPermissionRequests(role.id!)
                 if (prs.some(pr => pr.status === "APPROVED")) {
                     throw new InvalidStateException(
                         `cannot remove role '${role.value}' because it has approved permission requests.  You must first reject all approved requests for this role, or have the client withdraw them.`)
                 }
             }
+        }
 
-            for (const env of pontifexApp.environments ?? []) {
-                console.log('Updating roles for environment:', env.name);
-                await this.environmentService.updateEnvironmentRoles(env.id, body);
-            }
+        // Second pass: apply the role updates to each environment
+        for (const env of pontifexApp.environments ?? []) {
+            await this.environmentService.updateEnvironmentRoles(env.id, body);
         }
     }
 

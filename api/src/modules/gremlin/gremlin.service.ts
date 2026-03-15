@@ -48,27 +48,30 @@ export class GremlinService implements OnModuleInit, OnModuleDestroy {
         query: string,
         bindings: Record<string, any>
     ): string {
-        // Basic tokenizer: string literals vs identifiers
-        const tokens = query.match(/'[^']*'|"[^"]*"|\w+|[^\s]/g) || [];
+        // Single-pass regex: match string literals (to skip them) or
+        // word-boundary-delimited identifiers (to replace if they're bindings).
+        // Process longest keys first to avoid partial replacements.
+        const keys = Object.keys(bindings).sort((a, b) => b.length - a.length);
+        const keyPattern = keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
 
-        const result = tokens.map(token => {
-            if (
-                /^[a-zA-Z_]\w*$/.test(token) && // looks like an identifier
-                Object.prototype.hasOwnProperty.call(bindings, token)
-            ) {
-                const value = bindings[token];
-                if (typeof value === 'string') {
-                    return `'${value.replace(/'/g, "\\'")}'`;
-                } else if (Array.isArray(value)) {
-                    return `[${value.map(v => JSON.stringify(v)).join(', ')}]`;
-                } else {
-                    return String(value);
-                }
+        if (!keyPattern) return query;
+
+        const pattern = new RegExp(
+            `'[^'\\\\]*(?:\\\\.[^'\\\\]*)*'|"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"|\\b(${keyPattern})\\b`,
+            'g',
+        );
+
+        return query.replace(pattern, (match, binding) => {
+            if (binding === undefined) return match; // string literal — pass through
+
+            const value = bindings[binding];
+            if (typeof value === 'string') {
+                return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+            } else if (Array.isArray(value)) {
+                return `[${value.map(v => JSON.stringify(v)).join(', ')}]`;
             }
-            return token;
+            return String(value);
         });
-
-        return result.join('');
     }
 
     async submit(query: string, bindings: Record<string, any> = {}) {
