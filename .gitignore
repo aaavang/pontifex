@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env*.local
+*.iml
+.idea/
+.DS_Store
+
+# API
+api/dist/
+
+# UI
+ui/.next/
+ui/out/
+ui/build/
+ui/.vercel
+ui/.npmrc
+ui/.yarn

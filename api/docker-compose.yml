@@ -1,0 +1,40 @@
+networks:
+  pontifex:
+    driver: bridge
+
+services:
+  gremlin:
+    container_name: pontifex-gremlin
+    image: tinkerpop/gremlin-server:3.7.3
+    ports:
+      - "8182:8182"
+    volumes:
+      - gremlin_data:/opt/gremlin-server/data
+    networks:
+      - pontifex
+
+  api:
+    container_name: pontifex-api
+    build:
+      context: .
+      target: development
+    env_file: .env
+    environment:
+      PONTIFEX_DATABASE_ENDPOINT: ws://gremlin:8182/gremlin
+      PORT: 3001
+    volumes:
+      - ./src:/app/src:cached
+      - ./test:/app/test:cached
+      - ./nest-cli.json:/app/nest-cli.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tsconfig.build.json:/app/tsconfig.build.json
+      - ./webpack-hmr.config.js:/app/webpack-hmr.config.js
+    ports:
+      - "3001:3001"
+    networks:
+      - pontifex
+    depends_on:
+      - gremlin
+
+volumes:
+  gremlin_data:

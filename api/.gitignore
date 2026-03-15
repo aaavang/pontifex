@@ -1,0 +1,7 @@
+# Project exclude paths
+/dist/
+/node_modules/
+.env
+
+*.iml
+.idea

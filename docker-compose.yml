@@ -1,0 +1,72 @@
+networks:
+  pontifex:
+    driver: bridge
+
+services:
+  gremlin:
+    container_name: pontifex-gremlin
+    image: tinkerpop/gremlin-server:3.7.3
+    ports:
+      - "8182:8182"
+    volumes:
+      - gremlin_data:/opt/gremlin-server/data
+    networks:
+      - pontifex
+
+  api:
+    container_name: pontifex-api
+    build:
+      context: ./api
+      target: development
+    env_file: ./api/.env
+    environment:
+      PONTIFEX_DATABASE_ENDPOINT: ws://gremlin:8182/gremlin
+      PORT: 3001
+    volumes:
+      - ./api/src:/app/src:cached
+      - ./api/test:/app/test:cached
+      - ./api/nest-cli.json:/app/nest-cli.json
+      - ./api/tsconfig.json:/app/tsconfig.json
+      - ./api/tsconfig.build.json:/app/tsconfig.build.json
+      - ./api/webpack-hmr.config.js:/app/webpack-hmr.config.js
+    ports:
+      - "3001:3001"
+    networks:
+      - pontifex
+    depends_on:
+      - gremlin
+
+  ui:
+    container_name: pontifex-ui
+    build:
+      context: ./ui
+      target: development
+    env_file: ./ui/.env
+    environment:
+      NEXT_PUBLIC_APIM_URL: http://localhost:3001/api
+    volumes:
+      - ./ui/components:/app/components:cached
+      - ./ui/pages:/app/pages:cached
+      - ./ui/public:/app/public:cached
+      - ./ui/styles:/app/styles:cached
+      - ./ui/hooks:/app/hooks:cached
+      - ./ui/utils:/app/utils:cached
+      - ./ui/models:/app/models:cached
+      - ./ui/interfaces:/app/interfaces:cached
+      - ./ui/strings:/app/strings:cached
+      - ./ui/config:/app/config:cached
+      - ./ui/theme:/app/theme:cached
+      - ./ui/images:/app/images:cached
+      - ./ui/resources:/app/resources:cached
+      - ./ui/next.config.js:/app/next.config.js
+      - ./ui/server-preload.js:/app/server-preload.js
+      - ./ui/tsconfig.json:/app/tsconfig.json
+    ports:
+      - "3000:3000"
+    networks:
+      - pontifex
+    depends_on:
+      - api
+
+volumes:
+  gremlin_data:
