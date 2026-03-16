@@ -55,9 +55,7 @@ export const PasswordList = (props: PasswordListProps) => {
         duration: 3000,
         isClosable: true,
       });
-      await axios.post(`/api/environments/${environment.id}/removePassword`, {
-        id: p.id,
-      });
+      await axios.delete(`/api/environments/passwords/${p.id}`);
       toast({
         title: "Client Credential Deleted",
         description: `Deleted client credential, ${p.id}`,

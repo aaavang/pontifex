@@ -98,7 +98,6 @@ export class RoleService {
     }
 
     async getPermissionRequests(vid: string): Promise<PontifexPermissionRequest[]> {
-        // TODO: move to service
         const query = 'g.V(vid).out("requests permission")'
 
         const bindings = {

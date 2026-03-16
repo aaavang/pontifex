@@ -39,7 +39,7 @@ import {delay} from "../../common/utils/delay";
 
 @ApiTags('applications')
 @Controller('applications')
-@UseGuards(ResourceOwnerGuard) // TODO: add auth guard
+@UseGuards(ResourceOwnerGuard)
 @ApiBearerAuth()
 export class ApplicationController {
     constructor(private readonly applicationService: ApplicationService,
@@ -169,11 +169,17 @@ export class ApplicationController {
             console.log("Creating service principal for application:", application.appId);
             const principal = await this.createServicePrincipalWithRetry(application.appId!)
 
-            // TODO: Figure out how to properly grant User.Read
-            // console.log("Granting User.Read permission to service principal:", principal.id);
-            // await this.pontifexAadService.Instance.oauth2.grantPermission(principal.id!,
-            //                                                               'cb8c853a-b547-4797-9529-07971ecab8a9',
-            //                                                               "User.Read")
+            try {
+                console.log("Granting User.Read permission to service principal:", principal.id);
+                await this.pontifexAadService.Instance.oauth2.grantPermission(
+                    principal.id!,
+                    'cb8c853a-b547-4797-9529-07971ecab8a9',
+                    "User.Read"
+                );
+            } catch (error) {
+                console.warn(`Failed to grant User.Read to service principal ${principal.id}, will need manual consent:`, error?.message);
+            }
+
             const pontifexEnvironment: PontifexEnvironment = {
                 id: application.id!,
                 name: application.displayName!,
@@ -413,21 +419,46 @@ export class ApplicationController {
         @Param('appId') appId: string,
         @Body() createEnvironmentDto: CreateEnvironmentDto
     ) {
-        // Generate a unique ID for the environment
-        // TODO: this comes from aad
-        const environmentId = `environment-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        const userReadRequiredResourceAccess = {
+            resourceAppId: "00000003-0000-0000-c000-000000000000",
+            resourceAccess: [
+                {id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", type: "Scope"}
+            ]
+        };
+
+        const appBundle = await this.applicationService.get(appId);
+        const aadApp = await this.pontifexAadService.Instance.application.create({
+            displayName: createEnvironmentDto.name,
+            tags: [PONTIFEX_MANAGED_TAG],
+            notes: JSON.stringify({pontifexAppId: appBundle.application.id, pontifexAppName: appBundle.application.name}),
+            api: {
+                requestedAccessTokenVersion: 2,
+            },
+            requiredResourceAccess: [userReadRequiredResourceAccess],
+        });
+
+        const principal = await this.createServicePrincipalWithRetry(aadApp.appId!);
+        try {
+            await this.pontifexAadService.Instance.oauth2.grantPermission(
+                principal.id!,
+                'cb8c853a-b547-4797-9529-07971ecab8a9',
+                "User.Read"
+            );
+        } catch (error) {
+            console.warn(`Failed to grant User.Read to service principal ${principal.id}, will need manual consent:`, error?.message);
+        }
 
         const environment: PontifexEnvironment = {
-            id: environmentId,
+            id: aadApp.id!,
             name: createEnvironmentDto.name,
             level: createEnvironmentDto.level,
-            clientId: createEnvironmentDto.clientId,
+            clientId: aadApp.appId!,
             spaRedirectUrls: createEnvironmentDto.spaRedirectUrls || [],
             webRedirectUrls: createEnvironmentDto.webRedirectUrls || [],
         };
 
         const createdEnvironment = await this.environmentService.update(environment);
-        await this.environmentService.addApplicationAssociation(appId, environmentId);
+        await this.environmentService.addApplicationAssociation(appId, aadApp.id!);
 
         return {environment: createdEnvironment};
     }

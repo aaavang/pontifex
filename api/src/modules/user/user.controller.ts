@@ -1,7 +1,6 @@
 import {Controller, Get, Put, Query, Req} from "@nestjs/common";
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
 import {PontifexIdentity} from "../../common/types/identity";
-import {PermissionRequestService} from "../permission-request/permission-request.service";
 import {PontifexUser} from "./entities/user.entity";
 import {UserService} from "./user.service";
 
@@ -9,8 +8,7 @@ import {UserService} from "./user.service";
 @Controller('users')
 @ApiBearerAuth()
 export class UserController {
-    constructor(private readonly userService: UserService,
-                private readonly permissionRequestService: PermissionRequestService) {
+    constructor(private readonly userService: UserService) {
     }
 
     @Put('create')
@@ -40,20 +38,8 @@ export class UserController {
         const userId = identity.id;
 
         const bundle = await this.userService.get(userId);
-        bundle.pendingPermissionRequests = await this.permissionRequestService.getPendingForUser(userId);
-        bundle.groupedPendingPermissionRequests = await this.permissionRequestService.getGroupedPendingForUser(userId);
 
         return {bundle}
-    }
-
-    @Get('me/permission-requests/pending')
-    @ApiOperation({summary: 'Get pending permission requests for current user'})
-    @ApiResponse({status: 200, description: 'Returns pending permission requests'})
-    async getPendingPermissionRequests(@Req() req) {
-        const identity = req.user as PontifexIdentity;
-        const userId = identity.id;
-
-        return await this.permissionRequestService.getPendingForUser(userId)
     }
 
     @Get('search')
@@ -72,8 +58,6 @@ export class UserController {
         const userId = req.params.id;
 
         const bundle = await this.userService.get(userId);
-        bundle.pendingPermissionRequests = await this.permissionRequestService.getPendingForUser(userId);
-        bundle.groupedPendingPermissionRequests = await this.permissionRequestService.getGroupedPendingForUser(userId);
 
         return {bundle};
     }

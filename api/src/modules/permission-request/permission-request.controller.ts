@@ -6,7 +6,7 @@ import {PermissionRequestService} from "./permission-request.service";
 
 @ApiTags('permission-requests')
 @Controller('permission-requests')
-@UseGuards(ResourceOwnerGuard) // TODO: add auth guard
+@UseGuards(ResourceOwnerGuard)
 @ApiBearerAuth()
 export class PermissionRequestController {
     constructor(private readonly permissionRequestService: PermissionRequestService) {

@@ -18,7 +18,6 @@ import {ResourceOwnerGuard} from "../../common/guards/resource-owner.guard";
 import {PontifexIdentity} from "../../common/types/identity";
 import {AuditEventService} from "../audit-event/audit-event.service";
 import {PontifexAuditEvent} from "../audit-event/entities/audit-event.entity";
-// import {AzureAdAuthGuard} from "../../common/guards/azure-ad-auth.guard";
 import {PontifexPassword} from "../password/entities/password.entity";
 import {PontifexPermissionRequest} from "../permission-request/entities/permision-request.entity";
 import {PermissionRequestService} from "../permission-request/permission-request.service";
@@ -32,7 +31,7 @@ import {EnvironmentService} from './environment.service';
 
 @ApiTags('environments')
 @Controller('environments')
-@UseGuards(ResourceOwnerGuard) // TODO: add auth guard
+@UseGuards(ResourceOwnerGuard)
 @ApiBearerAuth()
 export class EnvironmentController {
     constructor(private readonly environmentService: EnvironmentService,
@@ -132,19 +131,6 @@ export class EnvironmentController {
     async removePassword(@Param('id') id: string) {
         await this.environmentService.removePassword(id);
         return {id};
-    }
-
-    @Post(':id/removePassword')
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({summary: 'Remove a password from an environment by keyId'})
-    @ApiResponse({status: 200, description: 'Password removed successfully'})
-    @ApiResponse({status: 404, description: 'Password not found'})
-    async removePasswordByKeyId(
-        @Param('id') _id: string,
-        @Body() body: { keyId: string }
-    ) {
-        await this.environmentService.removePassword(body.keyId);
-        return {id: body.keyId};
     }
 
     @Post(':id/roles/:roleId')
@@ -292,44 +278,39 @@ export class EnvironmentController {
                 }
             }
 
-            // try to create new PontifexPermissionRequests, ignoring any that already exist
-            const newPermissions = newRequiredResources
+            // Identify new permissions to create (ones that don't already exist)
+            const newPermissionEntries = newRequiredResources
                 .filter(
                     (nrr) => nrr.resourceAppId !== "00000003-0000-0000-c000-000000000000"
                 )
-                .map<PontifexPermissionRequest[]>((requiredResource) =>
-                                                      requiredResource.resourceAccess!.map<PontifexPermissionRequest>(
-                                                          (resourceAccess) => ({
-                                                              id: `${id}.${resourceAccess.id}`,
-                                                              requestor: identity.id,
-                                                              createDate: new Date().toISOString(),
-                                                              status: "PENDING",
-                                                              // TODO: !! there's a better way to do this
-                                                              permissionType: resourceAccess.type!,
-                                                              targetPermissionId: 'temp', // temporary until we can look up the target permission id
-                                                              targetPermissionName: 'temp', // temporary until we can look up the target permission name
-                                                              sourceEnvironmentId: environment.id,
-                                                              sourceEnvironmentName: environment.name,
-                                                              targetEnvironmentId: 'temp',
-                                                              targetEnvironmentName: 'temp'
-                                                          })
-                                                      )
+                .flatMap((requiredResource) =>
+                    requiredResource.resourceAccess!.map((resourceAccess) => ({
+                        id: `${id}.${resourceAccess.id}`,
+                        permissionType: resourceAccess.type!,
+                        resourceAccessId: resourceAccess.id!,
+                    }))
                 )
-                .flat()
                 .filter(
-                    (newPermissionRequest) =>
-                        !permissionRequests.some((pr) => pr.id === newPermissionRequest.id)
+                    (entry) =>
+                        !permissionRequests.some((pr) => pr.id === entry.id)
                 );
 
-            for (const permissionRequest of newPermissions) {
-                if (permissionRequest.permissionType === "Role") {
-                    const targetRole = await this.roleService.get(
-                        permissionRequest.id.split(".")[1]
-                    );
-                    permissionRequest.targetPermissionId = targetRole.role.id
-                    permissionRequest.targetPermissionName = targetRole.role.name
-                    permissionRequest.targetEnvironmentId = targetRole.environment.id
-                    permissionRequest.targetEnvironmentName = targetRole.environment.name
+            for (const entry of newPermissionEntries) {
+                if (entry.permissionType === "Role") {
+                    const targetRole = await this.roleService.get(entry.resourceAccessId);
+                    const permissionRequest: PontifexPermissionRequest = {
+                        id: entry.id,
+                        requestor: identity.id,
+                        createDate: new Date().toISOString(),
+                        status: "PENDING",
+                        permissionType: entry.permissionType,
+                        targetPermissionId: targetRole.role.id,
+                        targetPermissionName: targetRole.role.name,
+                        sourceEnvironmentId: environment.id,
+                        sourceEnvironmentName: environment.name,
+                        targetEnvironmentId: targetRole.environment.id,
+                        targetEnvironmentName: targetRole.environment.name,
+                    };
                     console.log(
                         `Creating permission request for ${environment.name} to ${targetRole.role.name}`
                     );
@@ -362,14 +343,16 @@ export class EnvironmentController {
                             .join(", ")}`
                     );
 
-                    // TODO: wire up emails
-                    // await sendRequestEmails(
-                    //     permissionRequest,
-                    //     requestingUser,
-                    //     roleOwners,
-                    //     environment,
-                    //     targetRole.endpoint
-                    // );
+                    await this.permissionRequestService.sendRequestCreatedEmail({
+                        permissionRequestId: pr.id,
+                        requestor: requestingUser,
+                        ownerEmails: roleOwners.map(owner => owner.email),
+                        sourceEnvironment: environment,
+                        targetEnvironmentId: targetRole.environment.id,
+                        targetEnvironmentName: targetRole.environment.name,
+                        permissionName: targetRole.role.name,
+                        permissionType: 'Role',
+                    });
 
                     if (roleOwners.some((owner) => owner.id === requestingUser.id)) {
                         console.log(
@@ -377,23 +360,33 @@ export class EnvironmentController {
                         );
                         await this.permissionRequestService.updateStatus(pr.id, "APPROVED");
                         pr.status = "APPROVED";
-                        // TODO: wire up emails
-                        // await sendRequestStatusUpdateEmails(
-                        //     pr,
-                        //     requestingUser,
-                        //     roleOwners,
-                        //     environment,
-                        //     targetRole.endpoint
-                        // );
+                        await this.permissionRequestService.sendStatusUpdateEmail({
+                            permissionRequestId: pr.id,
+                            requestorEmail: requestingUser.email,
+                            status: 'APPROVED',
+                            sourceName: environment.name,
+                            sourceEnvironmentId: environment.id,
+                            targetName: targetRole.environment.name,
+                            targetEnvironmentId: targetRole.environment.id,
+                            permissionName: targetRole.role.name,
+                            permissionType: 'Role',
+                        });
                     }
-                } else if (permissionRequest.permissionType === "Scope") {
-                    const targetScope = await this.scopeService.get(
-                        permissionRequest.id.split(".")[1]
-                    );
-                    permissionRequest.targetPermissionId = targetScope.scope.id
-                    permissionRequest.targetPermissionName = targetScope.scope.name
-                    permissionRequest.targetEnvironmentId = targetScope.environment.id
-                    permissionRequest.targetEnvironmentName = targetScope.environment.name
+                } else if (entry.permissionType === "Scope") {
+                    const targetScope = await this.scopeService.get(entry.resourceAccessId);
+                    const permissionRequest: PontifexPermissionRequest = {
+                        id: entry.id,
+                        requestor: identity.id,
+                        createDate: new Date().toISOString(),
+                        status: "PENDING",
+                        permissionType: entry.permissionType,
+                        targetPermissionId: targetScope.scope.id,
+                        targetPermissionName: targetScope.scope.name,
+                        sourceEnvironmentId: environment.id,
+                        sourceEnvironmentName: environment.name,
+                        targetEnvironmentId: targetScope.environment.id,
+                        targetEnvironmentName: targetScope.environment.name,
+                    };
                     console.log(
                         `Creating permission request for ${environment.name} to ${targetScope.scope.name}`
                     );
@@ -420,18 +413,16 @@ export class EnvironmentController {
                         `found owners ${scopeOwners.map((owner) => owner.id).join(", ")}`
                     );
 
-                    // context.log(
-                    //   `sending emails to ${scopeOwners
-                    //     .map((owner) => owner.id)
-                    //     .join(", ")}`
-                    // );
-                    // await sendRequestEmails(
-                    //   permissionRequest,
-                    //   requestingUser,
-                    //   scopeOwners,
-                    //   environment,
-                    //   targetScope.scope
-                    // );
+                    await this.permissionRequestService.sendRequestCreatedEmail({
+                        permissionRequestId: pr.id,
+                        requestor: requestingUser,
+                        ownerEmails: scopeOwners.map(owner => owner.email),
+                        sourceEnvironment: environment,
+                        targetEnvironmentId: targetScope.environment.id,
+                        targetEnvironmentName: targetScope.environment.name,
+                        permissionName: targetScope.scope.name,
+                        permissionType: 'Scope',
+                    });
 
                     if (scopeOwners.some((owner) => owner.id === requestingUser.id)) {
                         console.log(
@@ -439,13 +430,17 @@ export class EnvironmentController {
                         );
                         await this.permissionRequestService.updateStatus(pr.id, "APPROVED");
                         pr.status = "APPROVED";
-                        // await sendRequestStatusUpdateEmails(
-                        //   pr,
-                        //   requestingUser,
-                        //   scopeOwners,
-                        //   environment,
-                        //   targetScope.scope
-                        // );
+                        await this.permissionRequestService.sendStatusUpdateEmail({
+                            permissionRequestId: pr.id,
+                            requestorEmail: requestingUser.email,
+                            status: 'APPROVED',
+                            sourceName: environment.name,
+                            sourceEnvironmentId: environment.id,
+                            targetName: targetScope.environment.name,
+                            targetEnvironmentId: targetScope.environment.id,
+                            permissionName: targetScope.scope.name,
+                            permissionType: 'Scope',
+                        });
                     }
                 }
             }

@@ -2,12 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { GremlinService } from '../gremlin/gremlin.service';
 import { GraphQueryService } from '../gremlin/graph-query.service';
+import { PermissionRequestService } from '../permission-request/permission-request.service';
 import { ResourceNotFoundException } from '../../common/exceptions/resource-not-found.exception';
 
 describe('UserService', () => {
   let service: UserService;
   let gremlinService: jest.Mocked<GremlinService>;
   let graphQueryService: jest.Mocked<GraphQueryService>;
+  let permissionRequestService: jest.Mocked<PermissionRequestService>;
 
   const mockUserVertex = {
     id: 'user-1',
@@ -38,12 +40,20 @@ describe('UserService', () => {
             getApplicationsForUser: jest.fn().mockResolvedValue([]),
           },
         },
+        {
+          provide: PermissionRequestService,
+          useValue: {
+            getPendingForUser: jest.fn().mockResolvedValue([]),
+            getGroupedPendingForUser: jest.fn().mockResolvedValue({}),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(UserService);
     gremlinService = module.get(GremlinService);
     graphQueryService = module.get(GraphQueryService);
+    permissionRequestService = module.get(PermissionRequestService);
   });
 
   describe('get', () => {
@@ -63,7 +73,7 @@ describe('UserService', () => {
       expect(graphQueryService.getApplicationsForUser).toHaveBeenCalledWith('user-1');
     });
 
-    it('returns empty permission request defaults', async () => {
+    it('populates permission requests from PermissionRequestService', async () => {
       gremlinService.getVertexAndChildren.mockResolvedValue({
         vertex: mockUserVertex,
         connections: {},
@@ -73,6 +83,8 @@ describe('UserService', () => {
 
       expect(result.pendingPermissionRequests).toEqual([]);
       expect(result.groupedPendingPermissionRequests).toEqual({});
+      expect(permissionRequestService.getPendingForUser).toHaveBeenCalledWith('user-1');
+      expect(permissionRequestService.getGroupedPendingForUser).toHaveBeenCalledWith('user-1');
     });
 
     it('throws ResourceNotFoundException when user is not found', async () => {
