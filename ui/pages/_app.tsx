@@ -148,25 +148,18 @@ const accountMenu: AccountMenu = {
   },
 };
 
-const primaryLinks: PrimaryNavigationLink[] = [
-  {
-    hrefPath: "/",
-    displayText: "Home",
-  },
-  {
-    hrefPath: "/dashboard",
-    displayText: "My Dashboard",
-  },
-  {
-    hrefPath:
-      "https://rvohealth.atlassian.net/wiki/x/RoDeKQ",
-    displayText: "Documentation",
-  },
-  {
-    hrefPath: "mailto://aaavang@creditacceptance.com",
-    displayText: "Something Broken?",
-  },
-];
+function getPrimaryLinks(roles: string[] = []): PrimaryNavigationLink[] {
+  const links: PrimaryNavigationLink[] = [
+    { hrefPath: "/", displayText: "Home" },
+    { hrefPath: "/dashboard", displayText: "My Dashboard" },
+  ];
+
+  if (roles.includes("Admin")) {
+    links.push({ hrefPath: "/admin/gremlin", displayText: "Admin" });
+  }
+
+  return links;
+}
 
 type MyAppProps = {
   authConfig: any;
@@ -272,7 +265,7 @@ function MyApp({
                   navLinks={[]}
                   applicationName="Pontifex"
                 />
-                <PrimaryNavigation navLinks={primaryLinks} />
+                <PrimaryNavigation navLinks={getPrimaryLinks((msalInstance?.getActiveAccount()?.idTokenClaims as any)?.roles)} />
 
                 {!bannerAcked &&
                   globalBannerMessage?.showBanner &&
