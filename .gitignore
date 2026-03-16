@@ -4,6 +4,7 @@ node_modules/
 *.iml
 .idea/
 .DS_Store
+.traefik/certs/
 
 # API
 api/dist/
