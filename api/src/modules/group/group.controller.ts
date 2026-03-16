@@ -1,4 +1,4 @@
-import {Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query, Req} from "@nestjs/common";
+import {Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req} from "@nestjs/common";
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
 import {GroupService} from "./group.service";
 
@@ -33,7 +33,7 @@ export class GroupController {
         return await this.groupService.get(id);
     }
 
-    @Put(':id/owners')
+    @Patch(':id/owners')
     @ApiOperation({summary: 'Update group owners'})
     @ApiResponse({status: 200, description: 'Group owners updated'})
     async updateOwners(@Param('id') id: string, @Body() body: { ownerIds: string[] }) {
@@ -53,7 +53,7 @@ export class GroupController {
         return {id};
     }
 
-    @Put(':id/members')
+    @Patch(':id/members')
     @ApiOperation({summary: 'Update group members'})
     @ApiResponse({status: 200, description: 'Group members updated'})
     async updateMembers(@Param('id') id: string, @Body() body: { memberIds: string[] }) {
@@ -88,6 +88,15 @@ export class GroupController {
     async removeMember(@Param('id') id: string, @Param('userId') userId: string) {
         await this.groupService.removeMember(id, userId);
         return {id, userId};
+    }
+
+    @Delete(':id')
+    @ApiOperation({summary: 'Delete a group'})
+    @ApiResponse({status: 200, description: 'Group deleted'})
+    @ApiResponse({status: 404, description: 'Group not found'})
+    async deleteGroup(@Param('id') id: string) {
+        await this.groupService.delete(id);
+        return {id};
     }
 
     @Post(':id/sync')

@@ -33,6 +33,7 @@ describe('GroupService', () => {
             upsertVertex: jest.fn().mockResolvedValue(mockGroupVertex),
             upsertEdge: jest.fn(),
             dropEdge: jest.fn(),
+            dropVertex: jest.fn(),
             getVertexAndChildren: jest.fn(),
             submit: jest.fn(),
           },
@@ -152,6 +153,14 @@ describe('GroupService', () => {
       } as any);
 
       await expect(service.get('nonexistent')).rejects.toThrow(ResourceNotFoundException);
+    });
+  });
+
+  describe('delete', () => {
+    it('should drop the group vertex', async () => {
+      await service.delete('group-1');
+
+      expect(gremlinService.dropVertex).toHaveBeenCalledWith('group-1', 'group');
     });
   });
 

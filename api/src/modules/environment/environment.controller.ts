@@ -9,7 +9,6 @@ import {
     Param,
     Patch,
     Post,
-    Put,
     Query,
     Req,
     UseGuards
@@ -71,7 +70,7 @@ export class EnvironmentController {
         return groupedScopes;
     }
 
-    @Put(':id')
+    @Patch(':id')
     @ApiOperation({summary: 'Update an environment'})
     @ApiResponse({status: 200, description: 'Environment updated successfully'})
     @ApiResponse({status: 404, description: 'Environment not found'})
@@ -132,6 +131,19 @@ export class EnvironmentController {
     async removePassword(@Param('id') id: string) {
         await this.environmentService.removePassword(id);
         return {id};
+    }
+
+    @Post(':id/removePassword')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({summary: 'Remove a password from an environment by keyId'})
+    @ApiResponse({status: 200, description: 'Password removed successfully'})
+    @ApiResponse({status: 404, description: 'Password not found'})
+    async removePasswordByKeyId(
+        @Param('id') _id: string,
+        @Body() body: { keyId: string }
+    ) {
+        await this.environmentService.removePassword(body.keyId);
+        return {id: body.keyId};
     }
 
     @Post(':id/roles/:roleId')

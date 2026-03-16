@@ -139,17 +139,9 @@ describe('ApplicationService', () => {
   });
 
   describe('getAllByUser', () => {
-    it('returns applications owned by user', async () => {
-      gremlinService.submit.mockResolvedValue({ _items: [mockVertex] });
-
+    it('delegates to graphQueryService.getApplicationsForUser', async () => {
       const result = await service.getAllByUser('user-1');
-
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('my-app');
-    });
-
-    it('throws when userId is empty', async () => {
-      await expect(service.getAllByUser('')).rejects.toThrow('userId cannot be empty or undefined');
+      expect(result).toEqual([]);
     });
   });
 

@@ -31,6 +31,7 @@ import {ApplicationService} from "./application.service";
 import {CreateApplicationRequest} from "./dtos/application-create-request.dto";
 import {UpdateApplicationRequest} from "./dtos/application-update-request.dto";
 import {ApplicationUpdateRolesRequest} from "./dtos/application-update-roles-request.dto";
+import {ApplicationUpdateScopesRequest} from "./dtos/application-update-scopes-request.dto";
 import {PontifexApplication} from "./entities/application.entity";
 import {delay} from "../../common/utils/delay";
 
@@ -105,6 +106,16 @@ export class ApplicationController {
     @ApiResponse({status: 200, description: 'Returns audit events for the application'})
     @ApiResponse({status: 404, description: 'Application not found'})
     async getApplicationAuditEvents(@Param('id') id: string) {
+        const events = await this.applicationService.getAuditEvents(id);
+        return {events};
+    }
+
+    @Get(':id/audit')
+    @RequireResourceOwner({resourceType: 'APPLICATION', queryParameterKey: 'id'})
+    @ApiOperation({summary: 'Get audit events for an application'})
+    @ApiResponse({status: 200, description: 'Returns audit events for the application'})
+    @ApiResponse({status: 404, description: 'Application not found'})
+    async getApplicationAudit(@Param('id') id: string) {
         const events = await this.applicationService.getAuditEvents(id);
         return {events};
     }
@@ -384,6 +395,24 @@ export class ApplicationController {
         // Second pass: apply the role updates to each environment
         for (const env of pontifexApp.environments ?? []) {
             await this.environmentService.updateEnvironmentRoles(env.id, body);
+        }
+    }
+
+
+    /**
+     * Scopes
+     */
+    @Patch(':appId/scopes')
+    @RequireResourceOwner({resourceType: 'APPLICATION', queryParameterKey: 'appId'})
+    @ApiOperation({summary: 'Update application scopes'})
+    @ApiResponse({status: 200, description: 'Update was successful'})
+    @ApiResponse({status: 404, description: 'Application not found'})
+    async updateApplicationScopes(@Param("appId") appId: string,
+                                  @Body() body: ApplicationUpdateScopesRequest) {
+        const pontifexApp = await this.applicationService.get(appId)
+
+        for (const env of pontifexApp.environments ?? []) {
+            await this.environmentService.updateEnvironmentScopes(env.id, body.scopes);
         }
     }
 

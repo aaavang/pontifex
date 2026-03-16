@@ -88,6 +88,10 @@ export class GroupService {
         };
     }
 
+    async delete(id: string): Promise<void> {
+        await this.gremlinService.dropVertex(id, 'group');
+    }
+
     async addOwner(groupId: string, userId: string): Promise<void> {
         await this.gremlinService.upsertEdge({
             label: 'owns',

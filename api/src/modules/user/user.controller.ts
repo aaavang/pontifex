@@ -1,4 +1,4 @@
-import {Controller, Get, Put, Req} from "@nestjs/common";
+import {Controller, Get, Put, Query, Req} from "@nestjs/common";
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
 import {PermissionRequestService} from "../permission-request/permission-request.service";
 import {PontifexUser} from "./entities/user.entity";
@@ -51,6 +51,14 @@ export class UserController {
         const userId = jwtToken.oid as string;
 
         return await this.permissionRequestService.getPendingForUser(req.user.oid)
+    }
+
+    @Get('search')
+    @ApiOperation({summary: 'Search users by prefix'})
+    @ApiResponse({status: 200, description: 'Returns users matching the prefix'})
+    async searchUsers(@Query('prefix') prefix: string) {
+        const users = await this.userService.searchByPrefix(prefix);
+        return {users};
     }
 
     @Get(':id')

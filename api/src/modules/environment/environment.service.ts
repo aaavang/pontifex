@@ -421,4 +421,115 @@ export class EnvironmentService {
         }
         await this.auditEventService.publishEvent(event)
     }
+
+    private async updateOAuth2ScopesWithRetry(id: string, scopes: PermissionScope[], identifierUris: string[], maxAttempts = 10, intervalMs = 3000) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await this.pontifexAadService.Instance.application.update(id, {
+                    api: {oauth2PermissionScopes: scopes},
+                    identifierUris,
+                });
+            } catch (error) {
+                const isNotPropagated = error?.code === 'CannotDeleteOrUpdateEnabledEntitlement'
+                    || error?.body?.includes?.('CannotDeleteOrUpdateEnabledEntitlement');
+                if (isNotPropagated && attempt < maxAttempts) {
+                    console.log(`AAD scope update not yet propagated (attempt ${attempt}/${maxAttempts}), retrying in ${intervalMs}ms...`);
+                    await delay(intervalMs);
+                    continue;
+                }
+                throw error;
+            }
+        }
+    }
+
+    async removeScopes(id: string, existingScopes: PermissionScope[], scopesToRemove: PermissionScope[], identifierUris: string[]) {
+        const disabledScopes: PermissionScope[] = existingScopes.map(scope => {
+            if (scopesToRemove.some(s => s.value === scope.value)) {
+                return {...scope, isEnabled: false};
+            }
+            return scope;
+        });
+
+        // first disable the scopes to remove
+        await this.updateOAuth2ScopesWithRetry(id, disabledScopes, identifierUris);
+
+        // then remove them from AAD
+        const filteredScopes = disabledScopes.filter(scope => !scopesToRemove.some(s => s.value === scope.value));
+        await this.updateOAuth2ScopesWithRetry(id, filteredScopes, identifierUris);
+
+        // then remove them from Gremlin
+        for (const scope of scopesToRemove) {
+            await this.scopeService.delete(scope.id!);
+        }
+    }
+
+    async updateEnvironmentScopes(id: string, scopes: { name: string, displayName: string, description?: string }[]) {
+        console.log(`Updating scopes for environment ${id}`)
+        const environmentAppRegistration = await this.pontifexAadService.Instance.application.get(id)
+
+        const identifierUris =
+            environmentAppRegistration.identifierUris && environmentAppRegistration.identifierUris.length > 0
+                ? environmentAppRegistration.identifierUris
+                : [`api://${environmentAppRegistration.appId}`];
+
+        const existingScopes: PermissionScope[] = environmentAppRegistration.api?.oauth2PermissionScopes ?? []
+        console.log("Existing scopes:", existingScopes)
+
+        const newScopes: PermissionScope[] = scopes.map(scope => ({
+            type: "User",
+            id: uuid(),
+            adminConsentDisplayName: scope.displayName,
+            adminConsentDescription: scope.description ?? "",
+            userConsentDisplayName: scope.displayName,
+            userConsentDescription: scope.description ?? "",
+            value: scope.name,
+            isEnabled: true,
+        }))
+        console.log("New scopes:", newScopes)
+
+        const scopesToAdd = newScopes.filter(scope => !existingScopes.some(s => s.value === scope.value))
+        const scopesToRemove = existingScopes.filter(scope => !newScopes.some(s => s.value === scope.value))
+        const scopesToUpdate = existingScopes.filter(scope => {
+            const newScope = newScopes.find(s => s.value === scope.value)
+            return newScope && (
+                newScope.userConsentDisplayName !== scope.userConsentDisplayName
+                || newScope.userConsentDescription !== scope.userConsentDescription
+            )
+        })
+        console.log("Scopes to add:", scopesToAdd.map(s => s.value).join(','))
+        console.log("Scopes to remove:", scopesToRemove.map(s => s.value).join(','))
+        console.log("Scopes to update:", scopesToUpdate.map(s => s.value).join(','))
+
+        // remove scopes that aren't present anymore
+        if (scopesToRemove.length > 0) {
+            await this.removeScopes(id, existingScopes, scopesToRemove, identifierUris)
+        }
+
+        const updatedScopes = existingScopes.filter(scope => !scopesToRemove.some(s => s.value === scope.value)).concat(scopesToAdd)
+
+        if (scopesToAdd.length > 0) {
+            await this.updateOAuth2ScopesWithRetry(id, updatedScopes, identifierUris)
+            await this.syncScopes(id, scopesToAdd)
+        }
+
+        if (scopesToUpdate.length > 0) {
+            for (const scope of scopesToUpdate) {
+                const newScope = newScopes.find(s => s.value === scope.value)!
+                const pontifexScope: PontifexScope = {
+                    id: scope.id!,
+                    name: newScope.value!,
+                    displayName: newScope.userConsentDisplayName!,
+                    description: newScope.userConsentDescription ?? "",
+                }
+                await this.scopeService.update(pontifexScope)
+            }
+        }
+
+        const event: PontifexAuditEvent = {
+            action: 'UPDATE_APPLICATION_SCOPES',
+            value: JSON.stringify(scopes),
+            targetResourceId: id
+        }
+        await this.auditEventService.publishEvent(event)
+    }
 }
