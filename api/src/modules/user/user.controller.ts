@@ -40,6 +40,8 @@ export class UserController {
         const userId = identity.id;
 
         const bundle = await this.userService.get(userId);
+        bundle.pendingPermissionRequests = await this.permissionRequestService.getPendingForUser(userId);
+        bundle.groupedPendingPermissionRequests = await this.permissionRequestService.getGroupedPendingForUser(userId);
 
         return {bundle}
     }
@@ -70,6 +72,8 @@ export class UserController {
         const userId = req.params.id;
 
         const bundle = await this.userService.get(userId);
+        bundle.pendingPermissionRequests = await this.permissionRequestService.getPendingForUser(userId);
+        bundle.groupedPendingPermissionRequests = await this.permissionRequestService.getGroupedPendingForUser(userId);
 
         return {bundle};
     }

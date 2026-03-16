@@ -26,9 +26,11 @@ import { GremlinService } from '../src/modules/gremlin/gremlin.service';
  */
 
 const FAKE_USER = {
-  oid: 'e2e-test-user-oid',
+  id: 'e2e-test-user-oid',
   name: 'E2E Test User',
-  preferred_username: 'e2e@test.pontifex.dev',
+  email: 'e2e@test.pontifex.dev',
+  type: 'user' as const,
+  roles: [],
 };
 
 /** Track all app IDs created during the test run for guaranteed cleanup. */
@@ -53,7 +55,7 @@ describe('Pontifex API (e2e)', () => {
       .useValue({
         canActivate: (context) => {
           const req = context.switchToHttp().getRequest();
-          req.user = { ...FAKE_USER, id: FAKE_USER.oid };
+          req.user = { ...FAKE_USER };
           return true;
         },
       })
@@ -83,7 +85,7 @@ describe('Pontifex API (e2e)', () => {
     // cleanup the fake test user from Gremlin
     try {
       const gremlin = app.get(GremlinService);
-      await gremlin.dropVertex(FAKE_USER.oid, 'user');
+      await gremlin.dropVertex(FAKE_USER.id, 'user');
     } catch (e) {
       console.warn('User cleanup failed:', e.message);
     }
@@ -112,9 +114,9 @@ describe('Pontifex API (e2e)', () => {
         .expect(200);
 
       expect(res.body.user).toBeDefined();
-      expect(res.body.user.id).toBe(FAKE_USER.oid);
+      expect(res.body.user.id).toBe(FAKE_USER.id);
       expect(res.body.user.name).toBe(FAKE_USER.name);
-      expect(res.body.user.email).toBe(FAKE_USER.preferred_username);
+      expect(res.body.user.email).toBe(FAKE_USER.email);
     });
 
     it('GET /api/users/me — returns the current user bundle', async () => {
@@ -125,7 +127,7 @@ describe('Pontifex API (e2e)', () => {
         .expect(200);
 
       expect(res.body.bundle).toBeDefined();
-      expect(res.body.bundle.user.id).toBe(FAKE_USER.oid);
+      expect(res.body.bundle.user.id).toBe(FAKE_USER.id);
     });
   });
 
@@ -238,9 +240,9 @@ describe('Pontifex API (e2e)', () => {
       expect(res.body.passwords).toBeInstanceOf(Array);
     });
 
-    it('PUT /api/environments/:id — updates the environment', async () => {
+    it('PATCH /api/environments/:id — updates the environment', async () => {
       const res = await request(app.getHttpServer())
-        .put(`/api/environments/${envId}`)
+        .patch(`/api/environments/${envId}`)
         .send({ spaRedirectUrls: ['http://localhost:3000'] })
         .expect(200);
 

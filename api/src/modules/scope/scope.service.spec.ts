@@ -9,11 +9,12 @@ describe('ScopeService', () => {
 
   const mockScopeVertex = {
     id: 'scope-1',
-    properties: {
-      name: [{ value: 'User.Read' }],
-      displayName: [{ value: 'Read user profile' }],
-      description: [{ value: 'Allows reading user profile' }],
-    },
+    label: 'scope',
+    properties: [
+      { key: 'name', value: 'User.Read' },
+      { key: 'displayName', value: 'Read user profile' },
+      { key: 'description', value: 'Allows reading user profile' },
+    ],
   };
 
   const mockEnvVertex = {

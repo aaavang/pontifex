@@ -1,4 +1,4 @@
-import {forwardRef, Module} from '@nestjs/common';
+import {Module} from '@nestjs/common';
 import {AuditEventModule} from "../audit-event/audit-event.module";
 import {GremlinModule} from "../gremlin/gremlin.module";
 import {PasswordModule} from "../password/password.module";
@@ -16,7 +16,7 @@ import {EnvironmentService} from "./environment.service";
                       PontifexAadModule,
                       RoleModule,
                       ScopeModule,
-                      forwardRef(() => PermissionRequestModule),
+                      PermissionRequestModule,
                       UserModule,
                       AuditEventModule],
             controllers: [EnvironmentController],

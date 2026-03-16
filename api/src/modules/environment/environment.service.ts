@@ -1,5 +1,5 @@
 import {AppRole, PermissionScope} from "@microsoft/microsoft-graph-types";
-import {forwardRef, Inject, Injectable} from "@nestjs/common";
+import {Injectable} from "@nestjs/common";
 import {v4 as uuid} from "uuid"
 import {delay} from "../../common/utils/delay";
 import {omit} from "../../common/utils/obj";
@@ -11,7 +11,6 @@ import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexPassword, PontifexPasswordFromGremlin} from "../password/entities/password.entity";
 import {PasswordService} from "../password/password.service";
 import {PontifexPermissionRequestFromGremlin} from "../permission-request/entities/permision-request.entity";
-import {PermissionRequestService} from "../permission-request/permission-request.service";
 import {PontifexAadService} from "../pontifex-aad/pontifex-aad.service";
 import {PontifexARoleFromGremlin, PontifexRole, SensitiveAppRole} from "../role/entities/role.entity";
 import {RoleService} from "../role/role.service";
@@ -31,8 +30,6 @@ export class EnvironmentService {
                 private readonly pontifexAadService: PontifexAadService,
                 private readonly roleService: RoleService,
                 private readonly scopeService: ScopeService,
-                @Inject(forwardRef(
-                    () => PermissionRequestService)) private permissionRequestService: PermissionRequestService,
                 private readonly auditEventService: AuditEventService) {
     }
 
@@ -291,13 +288,6 @@ export class EnvironmentService {
 
     async removeRoles(id: string, existingAppRoles: SensitiveAppRole[], rolesToRemove: AppRole[]) {
         const appRoles: AppRole[] = []
-
-        for (const role of rolesToRemove) {
-            const prs = await this.roleService.getPermissionRequests(role.id!)
-            for (const pr of prs) {
-                await this.permissionRequestService.delete(pr.id)
-            }
-        }
 
         existingAppRoles.forEach(role => {
             if (rolesToRemove.some(r => r.value === role.value)) {

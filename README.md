@@ -186,7 +186,8 @@ pontifex/
 │   ├── scripts/               # CLI scripts (rebuild, cleanup)
 │   └── src/
 │       ├── modules/
-│       │   ├── application/    # App registration management
+│       │   ├── admin/          # Admin endpoints (Gremlin queries, graph viz)
+│       │   ├── application/    # App registration management + orchestration
 │       │   ├── environment/    # Environment (dev/test/qa/prod) management
 │       │   ├── gremlin/        # Graph DB client & shared queries
 │       │   ├── group/          # Azure AD group management & sync
@@ -197,12 +198,13 @@ pontifex/
 │       │   ├── system-settings/ # Bootstrap & system configuration
 │       │   ├── token-group/    # Token group & app role assignment
 │       │   └── user/           # User management
-│       └── common/             # Guards, decorators, utilities
+│       └── common/             # Guards, decorators, types, utilities
 ├── ui/                         # Next.js frontend
 │   ├── pages/                  # Route pages
 │   ├── components/             # React components
 │   └── e2e/                    # UI-focused Playwright tests
 ├── e2e/                        # Full-stack Playwright tests
+├── terraform/                  # Terraform provider for Pontifex
 ├── gremlin/                    # Gremlin Server configuration
 ├── .traefik/                   # Traefik TLS certs & config
 └── docker-compose.yml
@@ -210,19 +212,49 @@ pontifex/
 
 ## Graph Data Model
 
-Pontifex stores its data as vertices and edges in a Gremlin graph database:
+Pontifex stores its data as vertices and edges in a Gremlin property graph database.
 
+```mermaid
+graph LR
+    User -->|owns| Application
+    User -->|owns| Group
+    User -->|member of| Group
+    Group -->|owns| Application
+
+    Application -->|contains| Environment
+
+    Environment -->|contains| Role
+    Environment -->|contains| Scope
+    Environment -->|has password| Password
+    Environment -->|has token group| TokenGroup
+
+    Environment -->|requests permission| PermissionRequest
+    PermissionRequest -->|request source| Environment
+    PermissionRequest -->|request target| Role
+    PermissionRequest -->|request target| Scope
+
+    Application -->|has event| AuditEvent
+    Environment -->|has event| AuditEvent
+
+    SystemSettings -->|has setting| SystemSetting
+
+    style User fill:#4A90D9,color:#fff
+    style Group fill:#4A90D9,color:#fff
+    style Application fill:#7B68EE,color:#fff
+    style Environment fill:#2ECC71,color:#fff
+    style Role fill:#E67E22,color:#fff
+    style Scope fill:#E67E22,color:#fff
+    style PermissionRequest fill:#E74C3C,color:#fff
+    style TokenGroup fill:#1ABC9C,color:#fff
+    style Password fill:#95A5A6,color:#fff
+    style AuditEvent fill:#95A5A6,color:#fff
+    style SystemSettings fill:#95A5A6,color:#fff
+    style SystemSetting fill:#95A5A6,color:#fff
 ```
-User ──owns──► Application ──contains──► Environment
-  │                 ▲                        │
-  ├──owns──► Group ─┘ (owned by)             ├──has token group──► TokenGroup
-  │            ▲                             ├──contains──► Role
-  └──member of─┘                             └──contains──► Scope
 
-SystemSettings base ──has setting──► SystemSetting vertices
-```
+All edges are stored bidirectionally (e.g., `owns` / `owned by`, `contains` / `contained by`). The diagram shows the primary direction.
 
-**Key traversal**: Finding all apps a user has access to (direct + group ownership):
+**Key traversal** — finding all apps a user has access to (direct + group ownership):
 
 ```gremlin
 g.V(userId)
@@ -234,3 +266,92 @@ g.V(userId)
   .out("owns").has("type", "application")
   .dedup()
 ```
+
+## Service Dependency Graph
+
+The API is organized as NestJS modules with a layered dependency structure. The `ApplicationOrchestrationService` sits above the domain services to coordinate complex multi-resource operations (cascade deletes, role updates with permission request cleanup) without creating circular dependencies.
+
+```mermaid
+graph TD
+    subgraph Orchestration
+        AppOrch[ApplicationOrchestrationService]
+    end
+
+    subgraph Domain Services
+        AppSvc[ApplicationService]
+        EnvSvc[EnvironmentService]
+        PRSvc[PermissionRequestService]
+        UserSvc[UserService]
+        GroupSvc[GroupService]
+        RoleSvc[RoleService]
+        ScopeSvc[ScopeService]
+        TokenSvc[TokenGroupService]
+        PwSvc[PasswordService]
+        AuditSvc[AuditEventService]
+        SysSvc[SystemSettingsService]
+    end
+
+    subgraph Infrastructure
+        Gremlin[GremlinService]
+        GraphQ[GraphQueryService]
+        AAD[PontifexAadService]
+        Email[EmailService]
+    end
+
+    AppOrch --> AppSvc
+    AppOrch --> EnvSvc
+    AppOrch --> PRSvc
+    AppOrch --> PwSvc
+    AppOrch --> RoleSvc
+    AppOrch --> ScopeSvc
+    AppOrch --> AuditSvc
+    AppOrch --> AAD
+    AppOrch --> Gremlin
+
+    AppSvc --> Gremlin
+    AppSvc --> GraphQ
+
+    EnvSvc --> Gremlin
+    EnvSvc --> PwSvc
+    EnvSvc --> RoleSvc
+    EnvSvc --> ScopeSvc
+    EnvSvc --> AuditSvc
+    EnvSvc --> AAD
+
+    PRSvc --> Gremlin
+    PRSvc --> RoleSvc
+    PRSvc --> ScopeSvc
+    PRSvc --> Email
+    PRSvc --> AAD
+
+    UserSvc --> Gremlin
+    UserSvc --> GraphQ
+
+    GroupSvc --> Gremlin
+    GroupSvc --> AAD
+
+    TokenSvc --> Gremlin
+    TokenSvc --> AAD
+
+    SysSvc --> AppSvc
+    SysSvc --> EnvSvc
+    SysSvc --> UserSvc
+    SysSvc --> GroupSvc
+    SysSvc --> TokenSvc
+    SysSvc --> AAD
+    SysSvc --> Gremlin
+
+    RoleSvc --> Gremlin
+    ScopeSvc --> Gremlin
+    PwSvc --> Gremlin
+    AuditSvc --> Gremlin
+    GraphQ --> Gremlin
+
+    style AppOrch fill:#E74C3C,color:#fff
+    style Gremlin fill:#2ECC71,color:#fff
+    style GraphQ fill:#2ECC71,color:#fff
+    style AAD fill:#4A90D9,color:#fff
+    style Email fill:#4A90D9,color:#fff
+```
+
+Dependencies flow strictly downward — no circular references or `forwardRef` usage.

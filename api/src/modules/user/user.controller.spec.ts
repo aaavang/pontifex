@@ -32,6 +32,7 @@ describe('UserController', () => {
           provide: PermissionRequestService,
           useValue: {
             getPendingForUser: jest.fn(),
+            getGroupedPendingForUser: jest.fn(),
           },
         },
       ],
@@ -47,7 +48,7 @@ describe('UserController', () => {
       userService.update.mockResolvedValue(mockUserBundle.user);
 
       const req = {
-        user: { oid: 'user-1', name: 'John Doe', preferred_username: 'john@example.com' },
+        user: { id: 'user-1', name: 'John Doe', email: 'john@example.com', type: 'user', roles: [] },
       };
 
       const result = await controller.createUser(req);
@@ -63,14 +64,18 @@ describe('UserController', () => {
   });
 
   describe('getCurrentUser', () => {
-    it('returns the current user bundle', async () => {
-      userService.get.mockResolvedValue(mockUserBundle);
+    it('returns the current user bundle with permission requests', async () => {
+      userService.get.mockResolvedValue({...mockUserBundle});
+      permissionRequestService.getPendingForUser.mockResolvedValue([]);
+      permissionRequestService.getGroupedPendingForUser.mockResolvedValue({});
 
-      const req = { user: { oid: 'user-1' } };
+      const req = { user: { id: 'user-1', name: 'John Doe', email: '', type: 'user', roles: [] } };
       const result = await controller.getCurrentUser(req);
 
-      expect(result).toEqual({ bundle: mockUserBundle });
+      expect(result.bundle.user.id).toBe('user-1');
       expect(userService.get).toHaveBeenCalledWith('user-1');
+      expect(permissionRequestService.getPendingForUser).toHaveBeenCalledWith('user-1');
+      expect(permissionRequestService.getGroupedPendingForUser).toHaveBeenCalledWith('user-1');
     });
   });
 
@@ -79,7 +84,7 @@ describe('UserController', () => {
       const pendingPrs = [{ id: 'pr-1', status: 'PENDING' }];
       permissionRequestService.getPendingForUser.mockResolvedValue(pendingPrs as any);
 
-      const req = { user: { oid: 'user-1' } };
+      const req = { user: { id: 'user-1', name: 'John Doe', email: '', type: 'user', roles: [] } };
       const result = await controller.getPendingPermissionRequests(req);
 
       expect(result).toEqual(pendingPrs);
@@ -87,13 +92,16 @@ describe('UserController', () => {
   });
 
   describe('getUserById', () => {
-    it('returns the user bundle by id', async () => {
-      userService.get.mockResolvedValue(mockUserBundle);
+    it('returns the user bundle by id with permission requests', async () => {
+      userService.get.mockResolvedValue({...mockUserBundle});
+      permissionRequestService.getPendingForUser.mockResolvedValue([]);
+      permissionRequestService.getGroupedPendingForUser.mockResolvedValue({});
 
       const req = { params: { id: 'user-1' } };
       const result = await controller.getUserById(req);
 
-      expect(result).toEqual({ bundle: mockUserBundle });
+      expect(result.bundle.user.id).toBe('user-1');
+      expect(permissionRequestService.getPendingForUser).toHaveBeenCalledWith('user-1');
     });
   });
 });

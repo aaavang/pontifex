@@ -4,7 +4,7 @@
   "scripts": {
     "test": "npm run test:api:unit",
     "test:api:unit": "npm --prefix api test -- --no-coverage --testPathIgnorePatterns='integration'",
-    "test:api:integration": "npm --prefix api test -- --config jest.integration.config.ts --no-coverage",
+    "test:api:integration": "NODE_OPTIONS='--experimental-vm-modules' npm --prefix api test -- --config jest.integration.config.ts --no-coverage",
     "test:api:e2e": "npm --prefix api run test:e2e",
     "test:api": "npm run test:api:unit && npm run test:api:integration",
     "test:ui:e2e": "npm --prefix ui run test:e2e",

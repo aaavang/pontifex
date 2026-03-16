@@ -5,12 +5,14 @@ import { EnvironmentService } from '../environment/environment.service';
 import { RoleService } from '../role/role.service';
 import { ScopeService } from '../scope/scope.service';
 import { PontifexAadService } from '../pontifex-aad/pontifex-aad.service';
+import { ApplicationOrchestrationService } from './application-orchestration.service';
 import { Reflector } from '@nestjs/core';
 
 describe('ApplicationController', () => {
   let controller: ApplicationController;
   let applicationService: jest.Mocked<ApplicationService>;
   let environmentService: jest.Mocked<EnvironmentService>;
+  let orchestrationService: jest.Mocked<ApplicationOrchestrationService>;
 
   const mockAppBundle = {
     application: { id: 'app-1', name: 'my-app', creator: 'user-1', description: '' },
@@ -63,6 +65,13 @@ describe('ApplicationController', () => {
           },
         },
         {
+          provide: ApplicationOrchestrationService,
+          useValue: {
+            deleteApplication: jest.fn(),
+            updateApplicationRoles: jest.fn(),
+          },
+        },
+        {
           provide: PontifexAadService,
           useValue: {
             Instance: {
@@ -86,6 +95,7 @@ describe('ApplicationController', () => {
     controller = module.get(ApplicationController);
     applicationService = module.get(ApplicationService);
     environmentService = module.get(EnvironmentService);
+    orchestrationService = module.get(ApplicationOrchestrationService);
   });
 
   describe('getApplications', () => {
@@ -142,12 +152,12 @@ describe('ApplicationController', () => {
 
   describe('deleteApplication', () => {
     it('deletes the application and returns the id', async () => {
-      applicationService.delete.mockResolvedValue(undefined);
+      orchestrationService.deleteApplication.mockResolvedValue(undefined);
 
       const result = await controller.deleteApplication('app-1');
 
       expect(result).toEqual({ id: 'app-1' });
-      expect(applicationService.delete).toHaveBeenCalledWith('app-1');
+      expect(orchestrationService.deleteApplication).toHaveBeenCalledWith('app-1');
     });
   });
 

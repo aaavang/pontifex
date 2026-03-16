@@ -17,7 +17,6 @@ import {
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from '@nestjs/swagger';
 import {v4 as uuid} from "uuid"
 import {RequireResourceOwner} from "../../common/decorators/resource-owner.decorator";
-import {InvalidStateException} from "../../common/exceptions/invalid-state.exception";
 import {ResourceOwnerGuard} from "../../common/guards/resource-owner.guard";
 import {PontifexIdentity} from "../../common/types/identity";
 import {omit} from "../../common/utils/obj";
@@ -29,6 +28,7 @@ import {RoleService} from "../role/role.service";
 import {PontifexScope} from "../scope/entities/scope.entity";
 import {ScopeService} from "../scope/scope.service";
 import {PONTIFEX_MANAGED_TAG} from "../system-settings/entities/pontifex-app-setting.entity";
+import {ApplicationOrchestrationService} from "./application-orchestration.service";
 import {ApplicationService} from "./application.service";
 import {CreateApplicationRequest} from "./dtos/application-create-request.dto";
 import {UpdateApplicationRequest} from "./dtos/application-update-request.dto";
@@ -43,6 +43,7 @@ import {delay} from "../../common/utils/delay";
 @ApiBearerAuth()
 export class ApplicationController {
     constructor(private readonly applicationService: ApplicationService,
+                private readonly orchestrationService: ApplicationOrchestrationService,
                 private readonly environmentService: EnvironmentService,
                 private readonly roleService: RoleService,
                 private readonly scopeService: ScopeService,
@@ -348,7 +349,7 @@ export class ApplicationController {
     @ApiResponse({status: 200, description: 'Application deleted successfully'})
     @ApiResponse({status: 404, description: 'Application not found'})
     async deleteApplication(@Param('id') id: string) {
-        await this.applicationService.delete(id);
+        await this.orchestrationService.deleteApplication(id);
         return {id};
     }
 
@@ -371,39 +372,7 @@ export class ApplicationController {
     @ApiResponse({status: 404, description: 'Application not found'})
     async updateApplicationRoles(@Param("applicationId") applicationId: string,
                                  @Body() body: ApplicationUpdateRolesRequest) {
-        const pontifexApp = await this.applicationService.get(applicationId)
-
-        // First pass: validate that no roles with approved permission requests are being removed
-        for (const env of pontifexApp.environments ?? []) {
-            const environmentAppRegistration = await this.pontifexAadService.Instance.application.get(env.id)
-            const newAppRoles: SensitiveAppRole[] = body.roles.map(role => ({
-                allowedMemberTypes: ["Application"],
-                description: role.description ?? "",
-                displayName: role.displayName,
-                id: uuid(),
-                value: role.claimValue,
-                sensitive: role.sensitive ?? false
-            }))
-
-            const existingAppRoles = environmentAppRegistration.appRoles as SensitiveAppRole[] ?? []
-
-            const rolesToRemove = existingAppRoles.filter(
-                role => role.allowedMemberTypes![0] !== "User" && !newAppRoles.some(
-                    r => r.displayName === role.displayName))
-
-            for (const role of rolesToRemove) {
-                const prs = await this.roleService.getPermissionRequests(role.id!)
-                if (prs.some(pr => pr.status === "APPROVED")) {
-                    throw new InvalidStateException(
-                        `cannot remove role '${role.value}' because it has approved permission requests.  You must first reject all approved requests for this role, or have the client withdraw them.`)
-                }
-            }
-        }
-
-        // Second pass: apply the role updates to each environment
-        for (const env of pontifexApp.environments ?? []) {
-            await this.environmentService.updateEnvironmentRoles(env.id, body);
-        }
+        await this.orchestrationService.updateApplicationRoles(applicationId, body);
     }
 
 

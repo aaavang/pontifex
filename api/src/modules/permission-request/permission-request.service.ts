@@ -1,12 +1,10 @@
-import {forwardRef, Inject, Injectable, Logger} from "@nestjs/common";
+import {Injectable, Logger} from "@nestjs/common";
 import * as fs from "fs";
 import * as Handlebars from "handlebars";
 import * as path from "path";
 import {ResourceNotFoundException} from "../../common/exceptions/resource-not-found.exception";
-import {mapToObject} from "../../common/utils/obj";
 import {EmailService} from "../email/email.service";
 import {PontifexEnvironment, PontifexEnvironmentFromGremlin} from "../environment/entities/environment.entity";
-import {EnvironmentService} from "../environment/environment.service";
 import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexAadService} from "../pontifex-aad/pontifex-aad.service";
 import {PontifexARoleFromGremlin, PontifexRole} from "../role/entities/role.entity";
@@ -28,8 +26,7 @@ export class PermissionRequestService {
                 private readonly pontifexService: PontifexAadService,
                 private readonly roleService: RoleService,
                 private readonly scopeService: ScopeService,
-                private readonly emailService: EmailService,
-                @Inject(forwardRef(() => EnvironmentService)) private readonly environmentService: EnvironmentService) {
+                private readonly emailService: EmailService) {
     }
 
     async get(id: string): Promise<PontifexPermissionRequestBundle> {
@@ -56,180 +53,6 @@ export class PermissionRequestService {
                 PontifexScopeFromGremlin
             )[0]!,
         };
-    }
-
-    async getInboundForEnvironment(environmentId: string): Promise<PontifexPermissionRequestBundle[]> {
-        const outboundLabels = ["requests permission"];
-        const secondStageLabels = ["request source", "request target"];
-        const firstStepLabels = [];
-
-        const permissionRequests: PontifexPermissionRequest[] = await this.gremlinService.getAllChildrenOfTypeWithGrandchildren(
-            environmentId,
-            environmentId,
-            "permissionRequest",
-            "out",
-            outboundLabels,
-            secondStageLabels,
-            firstStepLabels
-        );
-
-        console.log('permissionRequests', permissionRequests);
-
-        const inboundPermissionRequests: PontifexPermissionRequestBundle[] = [];
-
-        if (!permissionRequests || !permissionRequests["requests permission"]) {
-            return inboundPermissionRequests;
-        }
-
-        const permissionRequestIds = new Set<string>();
-        const sourceEnvironments = new Map<string, PontifexEnvironment>();
-        permissionRequests["request source"].environment?.forEach((env: any) => {
-            sourceEnvironments.set(env.id, PontifexEnvironmentFromGremlin(env));
-        });
-
-        const targetRoles = new Map<string, PontifexRole>();
-        permissionRequests["request target"].role?.forEach(
-            (role: any) => {
-                targetRoles.set(
-                    role.id,
-                    PontifexARoleFromGremlin(role)
-                );
-            }
-        );
-
-        const targetScopes = new Map<string, PontifexScope>();
-        permissionRequests["request target"].scope?.forEach((scope: any) => {
-            targetScopes.set(scope.id, PontifexScopeFromGremlin(scope));
-        });
-
-        const targetEnvironment = await this.environmentService.get(environmentId);
-
-        permissionRequests["requests permission"].permissionRequest?.forEach(
-            (pr: any) => {
-                if (permissionRequestIds.has(pr.id)) {
-                    return;
-                }
-                permissionRequestIds.add(pr.id);
-
-                let [sourceEnvironmentId, targetPermissionId] = pr.id.split(".");
-                const permissionRequest = PontifexPermissionRequestFromGremlin(pr);
-                const bundle: PontifexPermissionRequestBundle = {
-                    permissionRequest,
-                    sourceEnvironment: sourceEnvironments.get(sourceEnvironmentId)!,
-                    targetRole:
-                        permissionRequest.permissionType === "Role"
-                            ? targetRoles.get(targetPermissionId)
-                            : undefined,
-                    targetScope:
-                        permissionRequest.permissionType === "Scope"
-                            ? targetScopes.get(targetPermissionId)
-                            : undefined,
-                    targetEnvironment: targetEnvironment.environment,
-                };
-
-                inboundPermissionRequests.push(bundle);
-
-                return;
-            }
-        );
-
-        return inboundPermissionRequests;
-    }
-
-    async getOutboundForEnvironment(environmentId: string): Promise<PontifexPermissionRequestBundle[]> {
-        const outboundLabels = ["request target"];
-        const secondStageLabels = ["requests permission", "request source"];
-        const firstStepLabels = [];
-
-        const permissionRequestsBundle = mapToObject(await this.gremlinService.getAllChildrenOfTypeWithGrandchildren(
-            environmentId,
-            environmentId,
-            "permissionRequest",
-            "both",
-            outboundLabels,
-            secondStageLabels,
-            firstStepLabels
-        ));
-
-        console.log('outbound permission requests', JSON.stringify(mapToObject(permissionRequestsBundle), null, 2));
-
-        const outboundPermissionRequests: PontifexPermissionRequestBundle[] = [];
-
-        if (!permissionRequestsBundle || !permissionRequestsBundle["requests permission"]) {
-            return outboundPermissionRequests;
-        }
-
-        const permissionRequestIds = new Set<string>();
-        const sourceEnvironments = new Map<string, PontifexEnvironment>();
-        permissionRequestsBundle["request source"].environment?.forEach((env: any) => {
-            sourceEnvironments.set(env.id, PontifexEnvironmentFromGremlin(env));
-        });
-
-        const targetRoles = new Map<string, PontifexRole>();
-        const targetEnvByRoleId = new Map<string, PontifexEnvironment>();
-        permissionRequestsBundle["request target"].role?.forEach(
-            (role: any) => {
-                targetRoles.set(
-                    role.id,
-                    PontifexARoleFromGremlin(role)
-                );
-            }
-        );
-
-        for (const roleId of targetEnvByRoleId.keys()) {
-            const roleBundle = await this.roleService.get(roleId);
-            targetEnvByRoleId.set(roleId, roleBundle.environment);
-        }
-
-        const targetScopes = new Map<string, PontifexScope>();
-        const targetEnvironmentByScopeId = new Map<string, PontifexEnvironment>();
-        permissionRequestsBundle["request target"].scope?.forEach((scope: any) => {
-            targetScopes.set(scope.id, PontifexScopeFromGremlin(scope));
-        });
-
-        for (const scopeId of targetEnvironmentByScopeId.keys()) {
-            const scopeBundle = await this.scopeService.get(scopeId);
-            targetEnvironmentByScopeId.set(scopeId, scopeBundle.environment);
-        }
-
-        permissionRequestsBundle["requests permission"].permissionRequest?.forEach(
-            (pr: any) => {
-                if (permissionRequestIds.has(pr.id)) {
-                    return;
-                }
-                permissionRequestIds.add(pr.id);
-
-                let [sourceEnvironmentId, targetPermissionId] = pr.id.split(".");
-                if (sourceEnvironmentId !== environmentId) {
-                    // this isn't an outbound request for this environment
-                    return;
-                }
-
-                const permissionRequest = PontifexPermissionRequestFromGremlin(pr);
-                const bundle: PontifexPermissionRequestBundle = {
-                    permissionRequest,
-                    sourceEnvironment: sourceEnvironments.get(sourceEnvironmentId)!,
-                    targetRole:
-                        permissionRequest.permissionType === "Role"
-                            ? targetRoles.get(targetPermissionId)
-                            : undefined,
-                    targetScope:
-                        permissionRequest.permissionType === "Scope"
-                            ? targetScopes.get(targetPermissionId)
-                            : undefined,
-                    targetEnvironment:
-                        permissionRequest.permissionType === "Role"
-                            ? targetEnvByRoleId.get(targetPermissionId)
-                            : targetEnvironmentByScopeId.get(targetPermissionId),
-                };
-
-                outboundPermissionRequests.push(bundle);
-
-                return;
-            }
-        );
-
-        return outboundPermissionRequests;
     }
 
     async create(request: PontifexPermissionRequest,

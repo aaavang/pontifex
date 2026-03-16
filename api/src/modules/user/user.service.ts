@@ -1,9 +1,8 @@
-import {forwardRef, Inject, Injectable} from "@nestjs/common";
+import {Injectable} from "@nestjs/common";
 import {ResourceNotFoundException} from "../../common/exceptions/resource-not-found.exception";
 import {GraphQueryService} from "../gremlin/graph-query.service";
 import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexGroupFromGremlin} from "../group/entities/group.entity";
-import {PermissionRequestService} from "../permission-request/permission-request.service";
 import {PontifexUser, PontifexUserBundle, PontifexUserFromGremlin} from "./entities/user.entity";
 
 @Injectable()
@@ -11,7 +10,6 @@ export class UserService {
     constructor(
         private readonly gremlinService: GremlinService,
         private readonly graphQueryService: GraphQueryService,
-        @Inject(forwardRef(() => PermissionRequestService)) private readonly permissionRequestService: PermissionRequestService,
     ) {}
 
     async get(id: string): Promise<PontifexUserBundle> {
@@ -25,8 +23,8 @@ export class UserService {
             memberGroups: connections?.["member of"]?.group?.map(PontifexGroupFromGremlin) ?? [],
             ownedApplications: await this.graphQueryService.getApplicationsForUser(id),
             ownerGroups: connections?.["owns"]?.group?.map(PontifexGroupFromGremlin) ?? [],
-            pendingPermissionRequests: await this.permissionRequestService.getPendingForUser(id),
-            groupedPendingPermissionRequests: await this.permissionRequestService.getGroupedPendingForUser(id),
+            pendingPermissionRequests: [],
+            groupedPendingPermissionRequests: {},
             user: PontifexUserFromGremlin(vertex)
         }
 
