@@ -171,6 +171,19 @@ export class PontifexAAD {
                 `${APPLICATIONS_API_PATH}?$filter=appId eq '${appId}'`).get()
 
             return value[0]
+        },
+        getByTag: async (tag: string): Promise<Application[]> => {
+            const apps: Application[] = [];
+            let nextLink: string | undefined =
+                `${APPLICATIONS_API_PATH}?$filter=tags/any(t: t eq '${tag}')&$select=id,appId,displayName,tags,notes,appRoles,api,identifierUris`;
+
+            while (nextLink) {
+                const response = await this.aad.api(nextLink).get();
+                apps.push(...response.value);
+                nextLink = response['@odata.nextLink'];
+            }
+
+            return apps;
         }
     }
     servicePrincipal = {
@@ -210,6 +223,11 @@ export class PontifexAAD {
             } else {
                 throw new Error(`No ServicePrincipal found for appId, ${appId}`)
             }
+        },
+        getAppRoleAssignedTo: async (servicePrincipalId: string): Promise<AppRoleAssignment[]> => {
+            const resp = await this.aad.api(
+                `${SERVICE_PRINCIPALS_API_PATH}/${servicePrincipalId}/appRoleAssignedTo`).get();
+            return resp.value;
         }
     }
     group = {
@@ -250,6 +268,9 @@ export class PontifexAAD {
         getOwners: async (groupId: string): Promise<DirectoryObject[]> => {
             const resp = await this.aad.api(`${GROUPS_API_PATH}/${groupId}/owners`).get();
             return resp.value
+        },
+        update: async (groupId: string, properties: Partial<Group>): Promise<void> => {
+            await this.aad.api(`${GROUPS_API_PATH}/${groupId}`).patch(properties);
         }
     }
 

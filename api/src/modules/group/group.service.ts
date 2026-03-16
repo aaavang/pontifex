@@ -3,6 +3,7 @@ import {ResourceNotFoundException} from "../../common/exceptions/resource-not-fo
 import {PontifexApplicationFromGremlin} from "../application/entities/application.entity";
 import {GremlinService} from "../gremlin/gremlin.service";
 import {PontifexAadService} from "../pontifex-aad/pontifex-aad.service";
+import {PONTIFEX_GROUP_DESCRIPTION_PREFIX} from "../system-settings/entities/pontifex-app-setting.entity";
 import {PontifexUserFromGremlin} from "../user/entities/user.entity";
 import {PontifexGroup, PontifexGroupBundle, PontifexGroupFromGremlin} from "./entities/group.entity";
 
@@ -23,8 +24,11 @@ export class GroupService {
     ) {}
 
     async create(name: string, creatorId: string): Promise<PontifexGroup> {
-        // Create the group in Azure AD
-        const aadGroup = await this.pontifexAadService.Instance.group.create(name);
+        // Create the group in Azure AD with pontifex-managed description
+        const aadGroup = await this.pontifexAadService.Instance.group.create(
+            name,
+            `${PONTIFEX_GROUP_DESCRIPTION_PREFIX} ${name}`,
+        );
 
         // Create the group vertex in Gremlin
         const group = await this.ensureVertex(aadGroup.id!, aadGroup.displayName!);
@@ -41,10 +45,17 @@ export class GroupService {
         let aadGroup = await aad.group.getByDisplayName(name);
 
         if (!aadGroup) {
+            const taggedDescription = `${PONTIFEX_GROUP_DESCRIPTION_PREFIX} ${description ?? name}`;
             this.logger.log(`Creating ${name} group in Azure AD`);
-            aadGroup = await aad.group.create(name, description);
+            aadGroup = await aad.group.create(name, taggedDescription);
             this.logger.log(`Created ${name} group with id ${aadGroup.id}`);
         } else {
+            // Ensure existing groups get the tag in their description
+            const currentDesc = aadGroup.description ?? '';
+            if (!currentDesc.startsWith(PONTIFEX_GROUP_DESCRIPTION_PREFIX)) {
+                const taggedDescription = `${PONTIFEX_GROUP_DESCRIPTION_PREFIX} ${description ?? name}`;
+                await aad.group.update(aadGroup.id!, {description: taggedDescription});
+            }
             this.logger.log(`${name} group already exists in Azure AD (${aadGroup.id})`);
         }
 
@@ -152,6 +163,30 @@ export class GroupService {
             aad.group.getMembers(groupId),
             aad.group.getOwners(groupId),
         ]);
+
+        // Ensure user vertices exist before creating edges — upsertEdge requires
+        // both endpoint vertices to already exist, so without this step edges to
+        // users who haven't logged in yet would silently fail to be created.
+        const allAadUsers = new Map<string, { id: string; displayName?: string; mail?: string }>();
+        for (const member of [...aadMembers, ...aadOwners]) {
+            if (member.id && !allAadUsers.has(member.id)) {
+                allAadUsers.set(member.id, member as any);
+            }
+        }
+        for (const [id, aadUser] of allAadUsers) {
+            const name = aadUser.displayName ?? id;
+            const email = aadUser.mail ?? '';
+            await this.gremlinService.upsertVertex({
+                id,
+                pk: id,
+                defaultProperties: {
+                    type: 'user',
+                    name,
+                    email,
+                    normalizedName: name.toLowerCase(),
+                },
+            });
+        }
 
         const aadMemberIds = new Set(aadMembers.map(m => m.id!));
         const aadOwnerIds = new Set(aadOwners.map(o => o.id!));

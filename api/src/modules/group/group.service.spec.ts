@@ -61,7 +61,7 @@ describe('GroupService', () => {
     it('should create a group in Azure AD', async () => {
       await service.create('TestGroup', 'creator-id');
 
-      expect(mockGroupCreate).toHaveBeenCalledWith('TestGroup');
+      expect(mockGroupCreate).toHaveBeenCalledWith('TestGroup', '[pontifex-managed] TestGroup');
     });
 
     it('should create a group vertex in Gremlin', async () => {
@@ -284,6 +284,72 @@ describe('GroupService', () => {
       expect(result.membersRemoved).toEqual([]);
       expect(result.ownersAdded).toEqual([]);
       expect(result.ownersRemoved).toEqual([]);
+    });
+
+    it('should ensure user vertices exist before creating edges', async () => {
+      mockGroupGetMembers.mockResolvedValue([
+        { id: 'user-1', displayName: 'User One', mail: 'user1@test.com' },
+      ]);
+      mockGroupGetOwners.mockResolvedValue([
+        { id: 'user-2', displayName: 'User Two', mail: 'user2@test.com' },
+      ]);
+
+      await service.sync('group-1');
+
+      expect(gremlinService.upsertVertex).toHaveBeenCalledWith({
+        id: 'user-1',
+        pk: 'user-1',
+        defaultProperties: {
+          type: 'user',
+          name: 'User One',
+          email: 'user1@test.com',
+          normalizedName: 'user one',
+        },
+      });
+
+      expect(gremlinService.upsertVertex).toHaveBeenCalledWith({
+        id: 'user-2',
+        pk: 'user-2',
+        defaultProperties: {
+          type: 'user',
+          name: 'User Two',
+          email: 'user2@test.com',
+          normalizedName: 'user two',
+        },
+      });
+    });
+
+    it('should use id as fallback name when displayName is missing', async () => {
+      mockGroupGetMembers.mockResolvedValue([{ id: 'user-no-name' }]);
+      mockGroupGetOwners.mockResolvedValue([]);
+
+      await service.sync('group-1');
+
+      expect(gremlinService.upsertVertex).toHaveBeenCalledWith({
+        id: 'user-no-name',
+        pk: 'user-no-name',
+        defaultProperties: {
+          type: 'user',
+          name: 'user-no-name',
+          email: '',
+          normalizedName: 'user-no-name',
+        },
+      });
+    });
+
+    it('should deduplicate users that appear in both members and owners', async () => {
+      mockGroupGetMembers.mockResolvedValue([
+        { id: 'shared-user', displayName: 'Shared' },
+      ]);
+      mockGroupGetOwners.mockResolvedValue([
+        { id: 'shared-user', displayName: 'Shared' },
+      ]);
+
+      await service.sync('group-1');
+
+      const userVertexCalls = (gremlinService.upsertVertex as jest.Mock).mock.calls
+        .filter(([arg]) => arg.id === 'shared-user');
+      expect(userVertexCalls).toHaveLength(1);
     });
   });
 });

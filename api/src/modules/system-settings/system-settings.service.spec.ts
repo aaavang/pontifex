@@ -18,10 +18,12 @@ describe('SystemSettingsService', () => {
   let tokenGroupService: jest.Mocked<TokenGroupService>;
 
   const mockApplicationGetByAppId = jest.fn();
+  const mockApplicationUpdate = jest.fn();
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockApplicationGetByAppId.mockResolvedValue({ id: 'aad-app-object-id', appId: 'test-client-id' });
+    mockApplicationGetByAppId.mockResolvedValue({ id: 'aad-app-object-id', appId: 'test-client-id', tags: [] });
+    mockApplicationUpdate.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -63,6 +65,7 @@ describe('SystemSettingsService', () => {
             Instance: {
               application: {
                 getByAppId: mockApplicationGetByAppId,
+                update: mockApplicationUpdate,
               },
             },
           },
@@ -183,6 +186,27 @@ describe('SystemSettingsService', () => {
       await service.onApplicationBootstrap();
 
       expect(applicationService.addUserOwnerAssociation).toHaveBeenCalledWith('pontifex', 'aad-group-id');
+    });
+
+    it('should tag the Pontifex AAD app with pontifex-managed', async () => {
+      await service.onApplicationBootstrap();
+
+      expect(mockApplicationUpdate).toHaveBeenCalledWith('aad-app-object-id', {
+        tags: ['pontifex-managed'],
+        notes: JSON.stringify({pontifexAppId: 'pontifex', pontifexAppName: 'Pontifex'}),
+      });
+    });
+
+    it('should skip tagging if the AAD app is already tagged', async () => {
+      mockApplicationGetByAppId.mockResolvedValue({
+        id: 'aad-app-object-id',
+        appId: 'test-client-id',
+        tags: ['pontifex-managed'],
+      });
+
+      await service.onApplicationBootstrap();
+
+      expect(mockApplicationUpdate).not.toHaveBeenCalled();
     });
 
     it('should delegate token group creation using the AAD app object ID as envId', async () => {

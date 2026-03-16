@@ -21,3 +21,4 @@ ui/build/
 ui/.vercel
 ui/.npmrc
 ui/.yarn
+api/rebuild-plan.json

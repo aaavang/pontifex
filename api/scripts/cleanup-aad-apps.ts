@@ -21,7 +21,7 @@ import "isomorphic-fetch";
 import * as dotenv from "dotenv";
 import * as path from "path";
 
-dotenv.config({path: path.resolve(__dirname, '../api/.env')});
+dotenv.config({path: path.resolve(__dirname, '../.env')});
 
 const E2E_PREFIXES = ['e2e-', 'E2E-'];
 const PONTIFEX_APP_NAME = 'Pontifex';

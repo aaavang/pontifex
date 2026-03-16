@@ -27,6 +27,7 @@ import {PontifexRole, SensitiveAppRole} from "../role/entities/role.entity";
 import {RoleService} from "../role/role.service";
 import {PontifexScope} from "../scope/entities/scope.entity";
 import {ScopeService} from "../scope/scope.service";
+import {PONTIFEX_MANAGED_TAG} from "../system-settings/entities/pontifex-app-setting.entity";
 import {ApplicationService} from "./application.service";
 import {CreateApplicationRequest} from "./dtos/application-create-request.dto";
 import {UpdateApplicationRequest} from "./dtos/application-update-request.dto";
@@ -150,6 +151,8 @@ export class ApplicationController {
         for (const environment of body.environments) {
             const newApp: Application = {
                 displayName: `${body.applicationName}-${environment}`,
+                tags: [PONTIFEX_MANAGED_TAG],
+                notes: JSON.stringify({pontifexAppId: pontifexApp.id, pontifexAppName: pontifexApp.name}),
                 api: {
                     requestedAccessTokenVersion: 2 // tell AAD to use v2 OAuth2 tokens
                 },
@@ -224,6 +227,8 @@ export class ApplicationController {
         for (const environment of envsToAdd) {
             const application = await this.pontifexAadService.Instance.application.create({
                                                                                               displayName: `${appBundle.application.name}-${environment}`,
+                                                                                              tags: [PONTIFEX_MANAGED_TAG],
+                                                                                              notes: JSON.stringify({pontifexAppId: appBundle.application.id, pontifexAppName: appBundle.application.name}),
                                                                                               api: {
                                                                                                   requestedAccessTokenVersion: 2, // tell AAD to use v2 OAuth2 tokens
                                                                                               },

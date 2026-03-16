@@ -14,6 +14,7 @@ import {
     PONTIFEX_ADMIN_TOKEN_GROUP_ID,
     PONTIFEX_APP_ID,
     PONTIFEX_APP_NAME,
+    PONTIFEX_MANAGED_TAG,
 } from './entities/pontifex-app-setting.entity';
 
 @Injectable()
@@ -102,6 +103,15 @@ export class SystemSettingsService implements OnApplicationBootstrap {
             throw new Error(`Pontifex AAD application not found for clientId: ${clientId}`);
         }
         const envId = aadApp.id!;
+
+        // Tag the Pontifex AAD app so the recovery script can identify it
+        const currentTags = aadApp.tags ?? [];
+        if (!currentTags.includes(PONTIFEX_MANAGED_TAG)) {
+            await this.pontifexAadService.Instance.application.update(envId, {
+                tags: [...currentTags, PONTIFEX_MANAGED_TAG],
+                notes: JSON.stringify({pontifexAppId: PONTIFEX_APP_ID, pontifexAppName: PONTIFEX_APP_NAME}),
+            });
+        }
 
         // Create the Pontifex application via ApplicationService
         await this.applicationService.update({
