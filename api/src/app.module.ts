@@ -4,6 +4,7 @@ import {APP_GUARD} from "@nestjs/core";
 import {AppController} from './app.controller';
 import {AppService} from './app.service';
 import {AzureAdAuthGuard, AUTH_GUARD} from "./common/guards/azure-ad-auth.guard";
+import {AdminModule} from "./modules/admin/admin.module";
 import {ApplicationTokenGroupModule} from "./modules/application-token-group/application-token-group.module";
 import {ApplicationModule} from "./modules/application/application.module";
 import {AuditEventModule} from "./modules/audit-event/audit-event.module";
@@ -19,6 +20,7 @@ import {UserModule} from "./modules/user/user.module";
 
 @Module({
             imports: [ConfigModule.forRoot({isGlobal: true}),
+                      AdminModule,
                       ApplicationModule,
                       ApplicationTokenGroupModule,
                       EnvironmentModule,

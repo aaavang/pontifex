@@ -119,6 +119,45 @@ export class PontifexApiClient {
     return response.json();
   }
 
+  private async post<T>(path: string, data?: unknown): Promise<T> {
+    const response = await this.request.post(`${API_BASE_URL}${path}`, {
+      headers: this.headers,
+      data,
+      ignoreHTTPSErrors: true,
+    });
+    if (!response.ok()) {
+      const body = await response.text();
+      throw new Error(`API POST ${path} failed: ${response.status()} ${body}`);
+    }
+    return response.json();
+  }
+
+  private async patch<T>(path: string, data?: unknown): Promise<T> {
+    const response = await this.request.patch(`${API_BASE_URL}${path}`, {
+      headers: this.headers,
+      data,
+      ignoreHTTPSErrors: true,
+    });
+    if (!response.ok()) {
+      const body = await response.text();
+      throw new Error(`API PATCH ${path} failed: ${response.status()} ${body}`);
+    }
+    return response.json();
+  }
+
+  private async put<T>(path: string, data?: unknown): Promise<T> {
+    const response = await this.request.put(`${API_BASE_URL}${path}`, {
+      headers: this.headers,
+      data,
+      ignoreHTTPSErrors: true,
+    });
+    if (!response.ok()) {
+      const body = await response.text();
+      throw new Error(`API PUT ${path} failed: ${response.status()} ${body}`);
+    }
+    return response.json();
+  }
+
   private async del(path: string): Promise<void> {
     const response = await this.request.delete(`${API_BASE_URL}${path}`, {
       headers: this.headers,
@@ -127,6 +166,18 @@ export class PontifexApiClient {
     if (!response.ok()) {
       throw new Error(`API DELETE ${path} failed: ${response.status()} ${response.statusText()}`);
     }
+  }
+
+  /** Make a request and return the status code without throwing */
+  async rawRequest(method: string, path: string, data?: unknown): Promise<{ status: number; body: unknown }> {
+    const response = await this.request.fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: this.headers,
+      data,
+      ignoreHTTPSErrors: true,
+    });
+    const body = await response.json().catch(() => null);
+    return { status: response.status(), body };
   }
 
   // Applications
@@ -178,13 +229,49 @@ export class PontifexApiClient {
     return this.get('/applications/owned');
   }
 
+  async createApplication(name: string, environments: string[], description?: string): Promise<Application> {
+    return this.post('/applications', { applicationName: name, environments, description });
+  }
+
+  async updateApplicationRoles(appId: string, roles: Array<{ displayName: string; claimValue: string; sensitive: boolean; description?: string }>): Promise<void> {
+    await this.patch(`/applications/${appId}/roles`, { roles });
+  }
+
+  async updateApplicationScopes(appId: string, scopes: Array<{ name: string; displayName: string; description?: string }>): Promise<void> {
+    await this.patch(`/applications/${appId}/scopes`, { scopes });
+  }
+
   // Audit events
 
   async getApplicationAuditEvents(id: string): Promise<{ events: AuditEvent[] }> {
     return this.get(`/applications/${id}/audit-events`);
   }
 
+  // Environment operations
+
+  async addPassword(envId: string, displayName: string): Promise<{ id: string }> {
+    return this.post(`/environments/${envId}/addPassword`, { displayName });
+  }
+
+  // Groups
+
+  async createGroup(name: string): Promise<{ group: Group }> {
+    return this.post('/groups', { name });
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    return this.del(`/groups/${id}`);
+  }
+
+  async getGroup(id: string): Promise<{ group: Group; owners: User[]; members: User[] }> {
+    return this.get(`/groups/${id}`);
+  }
+
   // Users
+
+  async createUser(): Promise<{ user: User }> {
+    return this.put('/users/create');
+  }
 
   async getCurrentUser(): Promise<{ bundle: UserBundle }> {
     return this.get('/users/me');

@@ -1,5 +1,6 @@
 import {Controller, Get, Put, Query, Req} from "@nestjs/common";
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
+import {PontifexIdentity} from "../../common/types/identity";
 import {PermissionRequestService} from "../permission-request/permission-request.service";
 import {PontifexUser} from "./entities/user.entity";
 import {UserService} from "./user.service";
@@ -17,12 +18,12 @@ export class UserController {
     @ApiResponse({status: 200, description: 'User created successfully'})
     @ApiResponse({status: 400, description: 'Bad request'})
     async createUser(@Req() req) {
-        const jwtToken = req.user; // Assuming the JWT token is attached to the request object
+        const identity = req.user as PontifexIdentity;
         const user: PontifexUser = {
-            id: jwtToken.oid as string,
-            name: jwtToken.name as string ?? jwtToken.oid as string,
-            normalizedName: (jwtToken.name as string ?? jwtToken.oid as string).toLowerCase(),
-            email: jwtToken.preferred_username as string ?? ""
+            id: identity.id,
+            name: identity.name ?? identity.id,
+            normalizedName: (identity.name ?? identity.id).toLowerCase(),
+            email: identity.email
         }
 
         const createdUser = await this.userService.update(user)
@@ -35,8 +36,8 @@ export class UserController {
     @ApiOperation({summary: 'Get current user'})
     @ApiResponse({status: 200, description: 'Returns the current user'})
     async getCurrentUser(@Req() req) {
-        const jwtToken = req.user; // Assuming the JWT token is attached to the request object
-        const userId = jwtToken.oid as string;
+        const identity = req.user as PontifexIdentity;
+        const userId = identity.id;
 
         const bundle = await this.userService.get(userId);
 
@@ -47,10 +48,10 @@ export class UserController {
     @ApiOperation({summary: 'Get pending permission requests for current user'})
     @ApiResponse({status: 200, description: 'Returns pending permission requests'})
     async getPendingPermissionRequests(@Req() req) {
-        const jwtToken = req.user; // Assuming the JWT token is attached to the request object
-        const userId = jwtToken.oid as string;
+        const identity = req.user as PontifexIdentity;
+        const userId = identity.id;
 
-        return await this.permissionRequestService.getPendingForUser(req.user.oid)
+        return await this.permissionRequestService.getPendingForUser(userId)
     }
 
     @Get('search')

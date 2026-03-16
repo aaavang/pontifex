@@ -210,6 +210,22 @@ export class ApplicationService {
         return result._items.map(PontifexAuditEventFromGremlin);
     }
 
+    /**
+     * Check if an identity (user or app) owns this application — directly, or via a group they own or belong to.
+     */
+    async isOwnedBy(appId: string, identityId: string): Promise<boolean> {
+        const query = `g.V(vid)
+            .union(
+                fold().unfold(),
+                out("owns").has("type", "group"),
+                out("member of")
+            )
+            .out("owns").has("type", "application").hasId(appId)
+            .limit(1)`;
+        const result = await this.gremlinService.submit(query, {vid: identityId, appId});
+        return result._items.length > 0;
+    }
+
     async searchByPrefix(prefix: string): Promise<PontifexApplication[]> {
         const query = "g.V().has('type', 'application').has('name', TextP.startingWith(prefix))";
         const bindings = {prefix};

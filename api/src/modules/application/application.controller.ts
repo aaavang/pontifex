@@ -19,6 +19,7 @@ import {v4 as uuid} from "uuid"
 import {RequireResourceOwner} from "../../common/decorators/resource-owner.decorator";
 import {InvalidStateException} from "../../common/exceptions/invalid-state.exception";
 import {ResourceOwnerGuard} from "../../common/guards/resource-owner.guard";
+import {PontifexIdentity} from "../../common/types/identity";
 import {omit} from "../../common/utils/obj";
 import {CreateEnvironmentDto, PontifexEnvironment} from "../environment/entities/environment.entity";
 import {EnvironmentService} from "../environment/environment.service";
@@ -126,9 +127,11 @@ export class ApplicationController {
     @ApiOperation({summary: 'Create a new application'})
     @ApiResponse({status: 201, description: 'Application created successfully'})
     async createApplication(@Body() body: CreateApplicationRequest, @Req() req) {
+        const identity = req.user as PontifexIdentity;
+
         // Add creator information
         const pontifexApp = {
-            creator: req.user.oid,
+            creator: identity.id,
             id: uuid(),
             name: body.applicationName,
             loginEnabled: true,
@@ -139,7 +142,7 @@ export class ApplicationController {
         await this.applicationService.update(pontifexApp);
 
         // Add the creator as an owner
-        await this.applicationService.addUserOwnerAssociation(pontifexApp.id, req.user.oid);
+        await this.applicationService.addUserOwnerAssociation(pontifexApp.id, identity.id);
 
         const userReadRequiredResourceAccess: RequiredResourceAccess = {
             resourceAppId: "00000003-0000-0000-c000-000000000000",

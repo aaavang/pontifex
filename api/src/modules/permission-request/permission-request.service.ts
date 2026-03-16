@@ -677,4 +677,22 @@ export class PermissionRequestService {
 
         await this.gremlinService.dropVertex(id, 'permissionRequest');
     }
+
+    /**
+     * Check if an identity owns the source environment's parent application for this permission request.
+     */
+    async isOwnedBy(prId: string, identityId: string): Promise<boolean> {
+        const query = `g.V(vid)
+            .union(
+                fold().unfold(),
+                out("owns").has("type", "group"),
+                out("member of")
+            )
+            .out("owns").has("type", "application")
+            .out("contains").has("type", "environment")
+            .out("requests permission").hasId(prId)
+            .limit(1)`;
+        const result = await this.gremlinService.submit(query, {vid: identityId, prId});
+        return result._items.length > 0;
+    }
 }

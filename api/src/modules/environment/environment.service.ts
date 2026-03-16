@@ -149,6 +149,23 @@ export class EnvironmentService {
         };
     }
 
+    /**
+     * Check if an identity owns the parent application of this environment — directly, or via group membership.
+     */
+    async isOwnedBy(envId: string, identityId: string): Promise<boolean> {
+        const query = `g.V(vid)
+            .union(
+                fold().unfold(),
+                out("owns").has("type", "group"),
+                out("member of")
+            )
+            .out("owns").has("type", "application")
+            .out("contains").has("type", "environment").hasId(envId)
+            .limit(1)`;
+        const result = await this.gremlinService.submit(query, {vid: identityId, envId});
+        return result._items.length > 0;
+    }
+
     async getAllForApplication(appId: string): Promise<PontifexEnvironment[]> {
         const query = 'g.V(vid).out("contains").has("type", "environment")';
         const bindings = {vid: appId};

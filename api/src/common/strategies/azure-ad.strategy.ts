@@ -1,7 +1,8 @@
-import {Injectable} from '@nestjs/common';
+import {Injectable, UnauthorizedException} from '@nestjs/common';
 import {ConfigService} from "@nestjs/config";
 import {PassportStrategy} from '@nestjs/passport';
 import {BearerStrategy} from 'passport-azure-ad';
+import {PontifexIdentity} from '../types/identity';
 
 @Injectable()
 export class AzureAdStrategy extends PassportStrategy(BearerStrategy, 'azure-ad') {
@@ -26,8 +27,31 @@ export class AzureAdStrategy extends PassportStrategy(BearerStrategy, 'azure-ad'
               });
     }
 
-    async validate(token: any): Promise<any> {
-        // token contains JWT claims
-        return token;
+    async validate(token: any): Promise<PontifexIdentity> {
+        const isAppToken = (token.azp || token.appid) && !token.preferred_username && !token.scp;
+
+        if (isAppToken) {
+            const roles: string[] = token.roles ?? [];
+            if (!roles.includes('ProgrammaticAccess')) {
+                throw new UnauthorizedException('Service principal lacks ProgrammaticAccess role');
+            }
+
+            return {
+                id: token.oid,
+                name: token.azp ?? token.appid ?? token.oid,
+                email: '',
+                type: 'application',
+                roles,
+                clientId: token.azp ?? token.appid,
+            };
+        }
+
+        return {
+            id: token.oid,
+            name: token.name ?? token.oid,
+            email: token.preferred_username ?? '',
+            type: 'user',
+            roles: token.roles ?? [],
+        };
     }
 }

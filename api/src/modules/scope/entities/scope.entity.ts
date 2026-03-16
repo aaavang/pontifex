@@ -1,3 +1,4 @@
+import {vertexToObject} from "../../../common/utils/vertex";
 import {PontifexEnvironment} from "../../environment/entities/environment.entity";
 import {PontifexPermissionRequest} from "../../permission-request/entities/permision-request.entity";
 
@@ -17,10 +18,11 @@ export interface PontifexScopeBundle {
 export function PontifexScopeFromGremlin(
     vertex: any
 ): PontifexScope {
+    const obj = vertexToObject(vertex);
     return {
-        id: vertex["id"],
-        name: vertex["properties"]["name"][0]["value"],
-        displayName: vertex["properties"]["displayName"]?.[0]["value"],
-        description: vertex["properties"]["description"]?.[0]["value"],
+        id: obj["id"],
+        name: obj["name"],
+        displayName: obj["displayName"],
+        description: obj["description"] ?? "",
     };
 }

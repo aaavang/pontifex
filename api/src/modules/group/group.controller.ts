@@ -1,5 +1,6 @@
 import {Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req} from "@nestjs/common";
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
+import {PontifexIdentity} from "../../common/types/identity";
 import {GroupService} from "./group.service";
 
 @ApiTags('groups')
@@ -13,7 +14,8 @@ export class GroupController {
     @ApiOperation({summary: 'Create a new group'})
     @ApiResponse({status: 201, description: 'Group created successfully'})
     async createGroup(@Body() body: { name: string }, @Req() req) {
-        const group = await this.groupService.create(body.name, req.user.oid);
+        const identity = req.user as PontifexIdentity;
+        const group = await this.groupService.create(body.name, identity.id);
         return {group};
     }
 

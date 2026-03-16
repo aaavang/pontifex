@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import {ApiBearerAuth, ApiOperation, ApiResponse, ApiTags} from '@nestjs/swagger';
 import {ResourceOwnerGuard} from "../../common/guards/resource-owner.guard";
+import {PontifexIdentity} from "../../common/types/identity";
 import {AuditEventService} from "../audit-event/audit-event.service";
 import {PontifexAuditEvent} from "../audit-event/entities/audit-event.entity";
 // import {AzureAdAuthGuard} from "../../common/guards/azure-ad-auth.guard";
@@ -194,6 +195,7 @@ export class EnvironmentController {
         @Body() body: EnvironmentUpdatePermissionsRequest,
         @Req() req: any
     ) {
+        const identity = req.user as PontifexIdentity;
         console.log('body', body)
         const targetEnvironment = await this.environmentService.get(body.targetEnvironmentId)
         const currentApp = await this.pontifexService.Instance.application.get(id);
@@ -299,7 +301,7 @@ export class EnvironmentController {
                                                       requiredResource.resourceAccess!.map<PontifexPermissionRequest>(
                                                           (resourceAccess) => ({
                                                               id: `${id}.${resourceAccess.id}`,
-                                                              requestor: req.user.oid as string,
+                                                              requestor: identity.id,
                                                               createDate: new Date().toISOString(),
                                                               status: "PENDING",
                                                               // TODO: !! there's a better way to do this
@@ -340,9 +342,9 @@ export class EnvironmentController {
                     console.log(
                         `Created permission request ${pr.id} for ${environment.name} to ${targetRole.role.name}`
                     );
-                    console.log(`looking up user ${req.user.oid}`);
+                    console.log(`looking up user ${identity.id}`);
                     const {user: requestingUser} = await this.userService.get(
-                        req.user.oid as string
+                        identity.id
                     );
                     console.log(`found user ${requestingUser.id}`);
 
@@ -404,9 +406,9 @@ export class EnvironmentController {
                     console.log(
                         `Created permission request ${pr.id} for ${environment.name} to ${targetScope.scope.name}`
                     );
-                    console.log(`looking up user ${req.user.oid}`);
+                    console.log(`looking up user ${identity.id}`);
                     const {user: requestingUser} = await this.userService.get(
-                        req.user.oid as string
+                        identity.id
                     );
                     console.log(`found user ${requestingUser.id}`);
 
@@ -451,7 +453,7 @@ export class EnvironmentController {
             const event: PontifexAuditEvent = {
                 action: "UPDATE_ENVIRONMENT_PERMISSIONS",
                 value: JSON.stringify(newRequiredResources),
-                associatedUserId: req.user.oid as string,
+                associatedUserId: identity.id,
                 targetResourceId: id,
             };
             await this.auditService.publishEvent(event);
