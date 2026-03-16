@@ -31,9 +31,10 @@ Browser
 ```
 
 On startup, the API bootstraps:
-- **Pontifex_Admins** Azure AD group (created if missing, synced from AAD)
+- **Pontifex_Admins** Azure AD group (created if missing, synced from AAD, tagged with `[pontifex-managed]` description)
 - **System settings** stored as Gremlin vertices (admin group reference, environment levels)
 - **Pontifex application** with a real AAD-backed environment and admin token group
+- **Azure Entra tagging** — the Pontifex app registration is tagged with `pontifex-managed` for disaster recovery
 
 ## Prerequisites
 
@@ -141,11 +142,48 @@ cd e2e && npx playwright test
 npm run test:all
 ```
 
+## Scripts
+
+Scripts live in `api/scripts/` and run via `npx ts-node` from the `api/` directory.
+
+### Rebuild Gremlin from Azure Entra
+
+Reconstructs the Gremlin graph database from Azure Entra state. Works like Terraform — plan first, review, then apply.
+
+```bash
+cd api
+
+# Generate a plan (queries Azure Entra + Gremlin, shows diff)
+npx ts-node scripts/rebuild-gremlin-from-aad.ts plan [plan.json]
+
+# Apply the plan (executes all operations against Gremlin)
+npx ts-node scripts/rebuild-gremlin-from-aad.ts apply <plan.json>
+```
+
+All operations are idempotent upserts — safe to run against an existing graph for repair/sync without data loss.
+
+The script discovers Pontifex-managed resources by:
+- `pontifex-managed` tag on AAD app registrations
+- Service principal app role assignments (to discover groups)
+- `Pontifex_Admins` group by name
+
+It reconstructs: applications, environments, roles, scopes, groups, users, token groups, passwords, and permission requests. Audit events cannot be recovered.
+
+### Cleanup E2E test apps
+
+Deletes stale Azure AD app registrations created by e2e tests (apps with `e2e-` prefix).
+
+```bash
+cd api
+npx ts-node scripts/cleanup-aad-apps.ts [--dry-run]
+```
+
 ## Project Structure
 
 ```
 pontifex/
 ├── api/                        # NestJS backend
+│   ├── scripts/               # CLI scripts (rebuild, cleanup)
 │   └── src/
 │       ├── modules/
 │       │   ├── application/    # App registration management
