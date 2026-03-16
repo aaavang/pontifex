@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { PontifexApiClient } from './helpers/api-client';
 import { CleanupRegistry } from './helpers/cleanup';
+import { MailpitClient } from './helpers/mailpit';
 
 const authDir = path.join(__dirname, '.auth');
 const sessionStorageFile = path.join(authDir, 'session-storage.json');
@@ -27,6 +28,7 @@ function extractMsalAccessToken(sessionStorage: Record<string, string>): string 
 type IntegrationFixtures = {
   apiClient: PontifexApiClient;
   cleanup: CleanupRegistry;
+  mailpit: MailpitClient;
 };
 
 export const test = base.extend<IntegrationFixtures>({
@@ -67,6 +69,13 @@ export const test = base.extend<IntegrationFixtures>({
     const registry = new CleanupRegistry();
     await use(registry);
     await registry.runAll();
+  },
+
+  mailpit: async ({ playwright }, use) => {
+    const requestContext = await playwright.request.newContext();
+    const client = new MailpitClient(requestContext);
+    await use(client);
+    await requestContext.dispose();
   },
 });
 

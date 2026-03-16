@@ -42,6 +42,20 @@ services:
     networks:
       - pontifex
 
+  mail:
+    container_name: pontifex-mail
+    image: axllent/mailpit:latest
+    labels:
+      traefik.http.routers.pontifex-mail.rule: "Host(`mail.pontifex.localhost`)"
+      traefik.http.routers.pontifex-mail.tls: true
+      traefik.http.routers.pontifex-mail.entrypoints: websecure
+      traefik.http.services.pontifex-mail-backend.loadbalancer.server.port: 8025
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - pontifex
+
   api:
     container_name: pontifex-api
     build:
@@ -55,6 +69,9 @@ services:
     env_file: ./api/.env
     environment:
       PONTIFEX_DATABASE_ENDPOINT: ws://gremlin:8182/gremlin
+      PONTIFEX_SMTP_HOST: mail
+      PONTIFEX_SMTP_PORT: 1025
+      PONTIFEX_SMTP_FROM: pontifex@pontifex.localhost
       PORT: 3001
     volumes:
       - ./api/src:/app/src:cached
@@ -67,6 +84,7 @@ services:
       - pontifex
     depends_on:
       - gremlin
+      - mail
 
   ui:
     container_name: pontifex-ui

@@ -1,6 +1,10 @@
-import {forwardRef, Inject, Injectable} from "@nestjs/common";
+import {forwardRef, Inject, Injectable, Logger} from "@nestjs/common";
+import * as fs from "fs";
+import * as Handlebars from "handlebars";
+import * as path from "path";
 import {ResourceNotFoundException} from "../../common/exceptions/resource-not-found.exception";
 import {mapToObject} from "../../common/utils/obj";
+import {EmailService} from "../email/email.service";
 import {PontifexEnvironment, PontifexEnvironmentFromGremlin} from "../environment/entities/environment.entity";
 import {EnvironmentService} from "../environment/environment.service";
 import {GremlinService} from "../gremlin/gremlin.service";
@@ -9,6 +13,7 @@ import {PontifexARoleFromGremlin, PontifexRole} from "../role/entities/role.enti
 import {RoleService} from "../role/role.service";
 import {PontifexScope, PontifexScopeFromGremlin} from "../scope/entities/scope.entity";
 import {ScopeService} from "../scope/scope.service";
+import {PontifexUser} from "../user/entities/user.entity";
 import {
     PontifexPermissionRequest,
     PontifexPermissionRequestBundle,
@@ -17,10 +22,13 @@ import {
 
 @Injectable()
 export class PermissionRequestService {
+    private readonly logger = new Logger(PermissionRequestService.name);
+
     constructor(private readonly gremlinService: GremlinService,
                 private readonly pontifexService: PontifexAadService,
                 private readonly roleService: RoleService,
                 private readonly scopeService: ScopeService,
+                private readonly emailService: EmailService,
                 @Inject(forwardRef(() => EnvironmentService)) private readonly environmentService: EnvironmentService) {
     }
 
@@ -340,7 +348,6 @@ export class PermissionRequestService {
 
         bundle.permissionRequest.status = status;
 
-        // TODO: send email and log audit events here
         switch (status) {
             case "PENDING":
                 break;
@@ -421,7 +428,92 @@ export class PermissionRequestService {
 
         await this.upsert(bundle.permissionRequest);
 
+        // Send status update email to the requestor
+        const permissionName = bundle.targetRole?.name ?? bundle.targetScope?.name ?? '';
+        const permissionType = bundle.permissionRequest.permissionType;
+        await this.sendStatusUpdateEmail({
+            permissionRequestId: id,
+            requestorEmail: bundle.permissionRequest.requestor,
+            status,
+            sourceName: bundle.sourceEnvironment.name,
+            sourceEnvironmentId: bundle.sourceEnvironment.id,
+            targetName: bundle.permissionRequest.targetEnvironmentName,
+            targetEnvironmentId: targetEnvironment!,
+            permissionName,
+            permissionType,
+        });
+
         return bundle.permissionRequest;
+    }
+
+    async sendRequestCreatedEmail(params: {
+        permissionRequestId: string;
+        requestor: PontifexUser;
+        ownerEmails: string[];
+        sourceEnvironment: PontifexEnvironment;
+        targetEnvironmentId: string;
+        targetEnvironmentName: string;
+        permissionName: string;
+        permissionType: string;
+    }): Promise<void> {
+        if (params.ownerEmails.length === 0) return;
+
+        const html = this.renderTemplate('permission-request-created.html', {
+            permissionRequestId: params.permissionRequestId,
+            requestorName: params.requestor.name,
+            requestorEmail: params.requestor.email,
+            sourceName: params.sourceEnvironment.name,
+            sourceEnvironmentId: params.sourceEnvironment.id,
+            targetName: params.targetEnvironmentName,
+            targetEnvironmentId: params.targetEnvironmentId,
+            permissionName: params.permissionName,
+            permissionType: params.permissionType,
+            appUrl: 'https://app.pontifex.localhost:8443',
+        });
+
+        await this.emailService.send({
+            to: params.ownerEmails,
+            subject: `[Pontifex] New permission request: ${params.sourceEnvironment.name} → ${params.targetEnvironmentName}`,
+            html,
+        });
+    }
+
+    async sendStatusUpdateEmail(params: {
+        permissionRequestId: string;
+        requestorEmail: string;
+        status: string;
+        sourceName: string;
+        sourceEnvironmentId: string;
+        targetName: string;
+        targetEnvironmentId: string;
+        permissionName: string;
+        permissionType: string;
+    }): Promise<void> {
+        const html = this.renderTemplate('permission-request-status-update.html', {
+            permissionRequestId: params.permissionRequestId,
+            sourceName: params.sourceName,
+            sourceEnvironmentId: params.sourceEnvironmentId,
+            targetName: params.targetName,
+            targetEnvironmentId: params.targetEnvironmentId,
+            permissionName: params.permissionName,
+            permissionType: params.permissionType,
+            status: params.status,
+            statusLower: params.status.toLowerCase(),
+            appUrl: 'https://app.pontifex.localhost:8443',
+        });
+
+        await this.emailService.send({
+            to: params.requestorEmail,
+            subject: `[Pontifex] Permission request ${params.status.toLowerCase()}: ${params.sourceName} → ${params.targetName}`,
+            html,
+        });
+    }
+
+    private renderTemplate(templateName: string, context: Record<string, string>): string {
+        const templatePath = path.join(__dirname, 'templates', templateName);
+        const source = fs.readFileSync(templatePath, 'utf-8');
+        const template = Handlebars.compile(source);
+        return template(context);
     }
 
     async getPendingForUser(userId: string): Promise<PontifexPermissionRequest[]> {

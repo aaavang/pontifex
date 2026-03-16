@@ -1,0 +1,22 @@
+<h2>Permission Request {{status}}</h2>
+<p>Your <strong>{{permissionType}}</strong> request for <strong>{{permissionName}}</strong>
+has been <strong>{{statusLower}}</strong>.</p>
+<table style="border-collapse:collapse;">
+    <tr>
+        <td style="padding:4px 12px 4px 0;"><strong>Source:</strong></td>
+        <td><a href="{{appUrl}}/environments/{{sourceEnvironmentId}}">{{sourceName}}</a></td>
+    </tr>
+    <tr>
+        <td style="padding:4px 12px 4px 0;"><strong>Target:</strong></td>
+        <td><a href="{{appUrl}}/environments/{{targetEnvironmentId}}">{{targetName}}</a></td>
+    </tr>
+    <tr>
+        <td style="padding:4px 12px 4px 0;"><strong>Permission:</strong></td>
+        <td>{{permissionName}} ({{permissionType}})</td>
+    </tr>
+    <tr>
+        <td style="padding:4px 12px 4px 0;"><strong>Status:</strong></td>
+        <td>{{status}}</td>
+    </tr>
+</table>
+<p><a href="{{appUrl}}/permission-requests/{{permissionRequestId}}">View request details</a> in <a href="{{appUrl}}">Pontifex</a>.</p>
